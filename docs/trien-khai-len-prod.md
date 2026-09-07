@@ -49,7 +49,7 @@ Cột thêm vào bảng đã có — tất cả đều cho phép rỗng hoặc c
 
 | Bảng | Cột | Ghi chú |
 |---|---|---|
-| `ai_configs` | `group_require_mention` | mặc định `false` — xem mục 2.1 |
+| `ai_configs` | `group_require_mention` | mặc định `true` — ĐỔI HÀNH VI, xem mục 2.1 |
 | `ai_configs` | `mention_names` | rỗng |
 | `conversations` | `require_mention` | rỗng = theo cài đặt chung |
 | `product_docs` | `mini_app_id` | rỗng |
