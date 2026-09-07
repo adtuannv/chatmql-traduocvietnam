@@ -66,12 +66,19 @@ Bảng thêm mới: `website_widgets`, `permissions`, `roles`, `role_permissions
 
 ### 2.1. Luật "chỉ trả lời khi được nhắc tên" trong nhóm
 
-Tính năng mới. **Mặc định TẮT**, đặt vậy có chủ ý: nếu để bật thì chỉ riêng việc
-nâng cấp phiên bản đã làm AI im lặng trong mọi nhóm đang chạy, không ai bật mà
-hành vi đổi.
+Tính năng mới, **mặc định BẬT** theo yêu cầu vận hành: trong nhóm thì AI im lặng
+an toàn hơn là chen ngang hội thoại của người thật.
 
-Muốn dùng thì bật ở **AI → Trả lời tự động**, và đặt tên nhận biết (thường là tên
-tài khoản Zalo của công ty). Từng nhóm ghi đè được trong menu Chế độ AI.
+**Hệ quả cần chuẩn bị trước:** sau khi deploy, AI thôi trả lời trong mọi nhóm cho
+tới khi có người nhắc tên. Nếu chưa đặt tên nhận biết thì luật tự bỏ qua và AI
+trả lời như cũ — nhưng đừng dựa vào đó.
+
+Việc cần làm ngay sau deploy: vào **AI → Trả lời tự động**, đặt **tên gọi để nhận
+biết** (thường là tên tài khoản Zalo của công ty, ví dụ `Ngô Tuấn Cco Tdvn`), rồi
+nhắn đội sale rằng trong nhóm phải tag tên thì AI mới trả lời.
+
+Nhóm nào muốn AI đáp mọi câu như cũ thì mở menu **Chế độ AI** của nhóm đó chọn
+*Tắt cho nhóm này* — đặt tại nhóm thắng cài đặt chung.
 
 ### 2.2. Tin chữ khi gửi tài liệu bán hàng nay THỰC SỰ ra Zalo
 

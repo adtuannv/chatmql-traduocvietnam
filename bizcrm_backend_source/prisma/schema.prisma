@@ -772,10 +772,11 @@ model AiConfig {
   // Trong nhóm, AI trả lời mọi câu là phá hội thoại của người thật. Bật cờ này
   // thì chỉ những tin có nhắc tên mới được trả lời.
   //
-  // MẶC ĐỊNH TẮT một cách có chủ ý: đặt true thì chỉ riêng việc nâng cấp phiên
-  // bản đã làm AI im lặng trong mọi nhóm đang chạy, không ai bật mà hành vi
-  // đổi. Bật tính năng phải là quyết định của người vận hành.
-  groupRequireMention     Boolean  @default(false) @map("group_require_mention")
+  // MẶC ĐỊNH BẬT theo yêu cầu vận hành: trong nhóm thì im lặng an toàn hơn là
+  // chen ngang. LƯU Ý KHI NÂNG CẤP: tổ chức chưa có bản ghi cấu hình sẽ nhận
+  // giá trị này, nghĩa là AI thôi trả lời nhóm cho tới khi có người nhắc tên —
+  // đặt tên nhận biết ở AI → Trả lời tự động trước khi deploy.
+  groupRequireMention     Boolean  @default(true) @map("group_require_mention")
   // Các tên gọi coi là "được nhắc", cách nhau bằng dấu phẩy. Trống thì dùng
   // tên các bot đang bật của tổ chức.
   mentionNames            String?  @map("mention_names")
