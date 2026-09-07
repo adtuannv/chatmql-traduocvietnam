@@ -24,9 +24,9 @@ ROADMAP = [
     ('GĐ3 · Sản phẩm & Mini App', 'Sản phẩm', 'Cấu trúc dữ liệu sản phẩm chuẩn', 'Một hợp đồng dữ liệu cho cả giao diện và AI', 'Xong', 'Cao', '', '', '', 'Đổi nguồn chỉ cần map lại normalizeProduct'),
     ('GĐ3 · Sản phẩm & Mini App', 'Sản phẩm', 'Nguồn tạm từ bảng nội bộ', '78 sản phẩm thật hiển thị được ngay', 'Xong', 'Cao', '', '', '', 'Bảng nội bộ sẽ bỏ khi có API chính thức'),
     ('GĐ3 · Sản phẩm & Mini App', 'Sản phẩm', 'Đấu nối API sản phẩm chính thức TDVN', 'Giá và tồn kho lấy từ hệ thống gốc', 'Chờ phụ thuộc', 'Cao', '', '', '', 'Chờ TDVN cung cấp endpoint và khoá'),
-    ('GĐ3 · Sản phẩm & Mini App', 'Sản phẩm', 'Bổ sung mã cho sản phẩm còn thiếu', 'Đủ mã để ghép tài liệu và dựng link', 'Chờ phụ thuộc', 'Cao', '', '', '', '57/78 sản phẩm chưa có mã trong dữ liệu nguồn'),
+    ('GĐ3 · Sản phẩm & Mini App', 'Sản phẩm', 'Ghép mã Mini App cho sản phẩm', 'Đủ mã để dựng link gửi khách', 'Đang làm', 'Cao', '', '', '', 'Đã ghép 11/45 sản phẩm Mini App; còn lại tên hai bên khác nhau, cần người xác nhận'),
     ('GĐ3 · Sản phẩm & Mini App', 'Sản phẩm', 'Tab Sản phẩm trong hội thoại', 'Thẻ hàng ngang có ảnh, giá, nút gửi', 'Xong', 'Cao', '', '', '', ''),
-    ('GĐ3 · Sản phẩm & Mini App', 'Sản phẩm', 'Link Mini App thật', 'Khách bấm vào xem và đặt được hàng', 'Chờ phụ thuộc', 'Cao', '', '', '', 'Cần địa chỉ Mini App thật để đặt ZALO_MINIAPP_PRODUCT_URL'),
+    ('GĐ3 · Sản phẩm & Mini App', 'Sản phẩm', 'Link Mini App thật', 'Khách bấm vào xem và đặt được hàng', 'Xong', 'Cao', '', '', '', 'Đã lấy mẫu link từ hệ quản trị Mini App, sinh ra trùng khớp tuyệt đối'),
     ('GĐ4 · AI', 'AI', 'Trợ lý nội bộ cho nhân viên', 'Nhân viên tra cứu sản phẩm, chính sách, quy trình', 'Xong', 'Cao', '', '', '', ''),
     ('GĐ4 · AI', 'AI', 'AI đọc tài liệu bán hàng khi tư vấn', 'Câu trả lời bám tài liệu công ty', 'Xong', 'Cao', '', '', '', 'Thêm lớp ngữ cảnh có ngân sách ký tự riêng'),
     ('GĐ4 · AI', 'AI', 'Nhập tài liệu thật cho AI đọc', 'Đủ tư liệu để AI tư vấn đúng', 'Chưa bắt đầu', 'Cao', '', '', '', 'Nhân sự nhập nội dung, hệ thống đã sẵn sàng'),
@@ -73,7 +73,7 @@ CHECKLIST = [
     ('Sản phẩm', 'Danh sách', 'Trang duyệt sản phẩm có lọc và phân trang', 'Xong', '', ''),
     ('Sản phẩm', 'Danh sách', 'Ảnh đại diện trên thẻ sản phẩm', 'Xong', '', ''),
     ('Sản phẩm', 'Gửi khách', 'Tab Sản phẩm trong hội thoại', 'Xong', '', ''),
-    ('Sản phẩm', 'Gửi khách', 'Gửi thẻ sản phẩm kèm link Mini App', 'Đang làm', '', 'Giao diện xong, chờ địa chỉ Mini App thật'),
+    ('Sản phẩm', 'Gửi khách', 'Gửi thẻ sản phẩm kèm link Mini App', 'Đang làm', '', 'Link chạy đúng; còn 34 sản phẩm Mini App chưa ghép được với dữ liệu ChatMQL'),
     ('Sản phẩm', 'Gửi khách', 'Ẩn hàng ngừng bán khỏi danh sách gửi', 'Xong', '', ''),
     ('Tài liệu bán hàng', 'Cấu trúc', 'Cây thư mục nhiều cấp, sắp xếp được', 'Xong', '', ''),
     ('Tài liệu bán hàng', 'Cấu trúc', 'Bảy loại tài nguyên, mỗi loại một form', 'Xong', '', 'Sản phẩm, ảnh, video, PDF, tài liệu, văn bản, liên kết'),
@@ -120,8 +120,8 @@ CHECKLIST = [
 
 # (Loại, Vấn đề, Ảnh hưởng, Cần làm gì, Mức độ, Trạng thái, Ghi chú)
 TON_DONG = [
-    ('Chặn tính năng', '57 trong 78 sản phẩm chưa có mã', 'Nút gửi link Mini App bị khoá cho phần lớn danh sách', 'Bổ sung mã ở hệ thống nguồn, hoặc đổi mẫu link sang dùng id', 'Cao', 'Chờ phụ thuộc', ''),
-    ('Chặn tính năng', 'Chưa có địa chỉ Mini App thật', 'Không gửi được link đặt hàng cho khách', 'Cung cấp địa chỉ Mini App để đặt vào cấu hình máy chủ', 'Cao', 'Chờ phụ thuộc', ''),
+    ('Chặn tính năng', '34 trong 45 sản phẩm Mini App chưa ghép được với ChatMQL', 'Nút gửi link bị khoá ở những sản phẩm chưa ghép', 'Xác nhận từng cặp tên, hoặc thống nhất một hệ mã chung giữa hai bên', 'Cao', 'Đang làm', 'Đã ghép 11 cặp chắc chắn theo mã và theo tên kèm giá'),
+    ('Chặn tính năng', 'Chưa có địa chỉ Mini App thật', 'Không gửi được link đặt hàng cho khách', 'Đã xong: lấy từ hệ quản trị Mini App, đã đặt vào cấu hình', 'Cao', 'Xong', 'Mini App id 1575573710529516487'),
     ('Chặn tính năng', 'Chưa có API sản phẩm chính thức của TDVN', 'Vẫn phải dùng bảng nội bộ tạm', 'TDVN cung cấp endpoint và khoá truy cập', 'Cao', 'Chờ phụ thuộc', ''),
     ('Chặn tính năng', 'CRM không trả mã khách khi tạo đơn', 'Phiếu bán hàng thiếu mã khách so với bản giấy', 'Bên CRM bổ sung trường này vào phản hồi', 'Trung bình', 'Chờ phụ thuộc', ''),
     ('Dữ liệu', '29 sản phẩm đang ở trạng thái ngừng bán', 'Không hiện ở màn gửi khách, gồm cả mặt hàng chủ lực', 'Xác nhận mặt hàng nào còn bán để mở lại', 'Trung bình', 'Chờ phụ thuộc', 'Vạn Phúc, Vạn Thọ, Vạn Thịnh…'),

@@ -77,6 +77,14 @@ export interface CrmProduct {
    * hàng — đây chỉ là một tấm để nhận diện, thiếu thì giao diện vẽ ô trống.
    */
   imageUrl: string | null
+  /**
+   * Mã sản phẩm bên Zalo Mini App, ví dụ `FX/TP-CC03-100/KR-ZL`.
+   *
+   * KHÔNG dùng `code` để dựng link được: hệ quản trị Mini App đánh mã riêng
+   * theo từng quy cách đóng gói (túi kraft, hộp thiếc, hộp mica), trong khi
+   * `code` bên này chỉ có một mã cho cả dòng sản phẩm.
+   */
+  miniAppId: string | null
   /** Bản ghi gốc — giữ lại để hiện thêm cột mà không phải sửa backend. */
   raw: Record<string, unknown>
 }
@@ -125,6 +133,7 @@ export function normalizeProduct(row: Record<string, unknown>): CrmProduct {
     brand: str(pick(row, ['brand', 'thuong_hieu', 'brand_name'])),
     status: str(pick(row, ['status', 'trang_thai', 'active'])),
     imageUrl: firstImage(row),
+    miniAppId: str(pick(row, ['miniapp_id', 'mini_app_id', 'zalo_product_id', 'ma_zalo'])),
     raw: row,
   }
 }
@@ -245,6 +254,8 @@ async function searchViaLocal(orgId: string, q: string, limit: number): Promise<
       brand: null,
       status: r.status,
       imageUrl: r.images[0] ?? null,
+      // Ghép từ hệ quản trị Mini App, cất trong `specs` để không phải đổi lược đồ.
+      miniAppId: (r.specs as Record<string, unknown> | null)?.miniapp_id as string ?? null,
       // Ảnh/mô tả/video có sẵn trong bảng nội bộ — đưa qua `raw` để thư viện tài
       // liệu dựng được nội dung mà cấu trúc chuẩn không phải phình thêm cột.
       raw: {

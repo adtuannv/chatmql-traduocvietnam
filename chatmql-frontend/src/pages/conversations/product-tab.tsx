@@ -24,14 +24,27 @@ import { formatVnd } from '@/lib/order-calc'
 import { useSendMessage } from '@/hooks/use-conversations'
 import { useCrmProductList, useCrmProductSource, type CrmProduct } from '@/hooks/use-crm-products'
 
-/** Dựng link Mini App từ mẫu cấu hình. Thiếu mẫu hoặc thiếu mã thì không gửi. */
+/**
+ * Dựng link Mini App từ mẫu cấu hình. Thiếu mẫu hoặc thiếu mã thì không gửi.
+ *
+ * `{miniapp}` là mã bên hệ quản trị Zalo Mini App và là thứ Mini App thật sự
+ * hiểu; `{code}`/`{id}` giữ lại cho hệ thống nguồn nào đánh địa chỉ kiểu khác.
+ * Mã chứa dấu gạch chéo nên phải mã hoá, đúng như link hệ quản trị sinh ra.
+ */
 function miniAppLink(template: string, p: CrmProduct): string | null {
   if (!template) return null
-  const code = p.code?.trim()
-  const id = p.id != null ? String(p.id) : ''
-  if (template.includes('{code}') && !code) return null
-  if (template.includes('{id}') && !id) return null
-  return template.replaceAll('{code}', encodeURIComponent(code ?? '')).replaceAll('{id}', encodeURIComponent(id))
+  const phan: Record<string, string> = {
+    '{miniapp}': p.miniAppId?.trim() ?? '',
+    '{code}': p.code?.trim() ?? '',
+    '{id}': p.id != null ? String(p.id) : '',
+  }
+  let out = template
+  for (const [khoa, gia_tri] of Object.entries(phan)) {
+    if (!template.includes(khoa)) continue
+    if (!gia_tri) return null
+    out = out.replaceAll(khoa, encodeURIComponent(gia_tri))
+  }
+  return out
 }
 
 /** Tin gửi khách: gọn như một thẻ hàng, dòng cuối là link để bấm. */
@@ -61,7 +74,7 @@ export function ProductTab({ convId }: { convId: string }) {
   const doSend = (p: CrmProduct) => {
     const link = miniAppLink(template, p)
     if (!link) {
-      toast.error('Sản phẩm này chưa có mã nên chưa dựng được link Mini App')
+      toast.error('Sản phẩm này chưa ghép mã Mini App nên chưa dựng được link')
       return
     }
     const key = String(p.id ?? p.code ?? p.name)
@@ -113,6 +126,7 @@ export function ProductTab({ convId }: { convId: string }) {
                   key={key}
                   p={p}
                   link={link}
+                  template={template}
                   sending={sendingId === key}
                   disabled={send.isPending}
                   onSend={() => doSend(p)}
@@ -128,10 +142,11 @@ export function ProductTab({ convId }: { convId: string }) {
 
 /** Một thẻ hàng nằm ngang: ảnh · tên và giá · nút gửi. */
 function ProductCard({
-  p, link, sending, disabled, onSend,
+  p, link, template, sending, disabled, onSend,
 }: {
   p: CrmProduct
   link: string | null
+  template: string
   sending: boolean
   disabled: boolean
   onSend: () => void
@@ -188,7 +203,7 @@ function ProductCard({
         ) : (
           // Nút khoá mà không nói lý do thì sale tưởng hỏng; nói rõ thiếu gì.
           <span className="text-center text-[9.5px] leading-tight text-muted-foreground">
-            {p.code ? 'Chưa có link' : 'Thiếu mã SP'}
+            {template ? 'Chưa ghép Mini App' : 'Chưa có link'}
           </span>
         )}
       </div>

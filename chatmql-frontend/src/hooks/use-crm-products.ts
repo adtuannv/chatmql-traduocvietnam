@@ -28,6 +28,8 @@ export interface CrmProduct {
   status: string | null
   /** Ảnh đại diện để dựng thẻ sản phẩm; thiếu thì vẽ ô trống. */
   imageUrl: string | null
+  /** Mã bên Zalo Mini App, dùng dựng link gửi khách. */
+  miniAppId: string | null
   /** Bản ghi gốc CRM — dùng khi cần cột chưa được chuẩn hoá. */
   raw: Record<string, unknown>
 }
