@@ -47,6 +47,11 @@ export interface ProductDocSnippet {
   videoCount: number
   /** Link Mini App gửi được cho khách. Rỗng = sản phẩm chưa ghép mã. */
   miniAppUrl: string | null
+  /** Giá và đơn vị lấy THẲNG từ hệ thống nguồn tại thời điểm trả lời. */
+  price: number | null
+  priceMax: number | null
+  unit: string | null
+  vatNote: string | null
 }
 
 /**

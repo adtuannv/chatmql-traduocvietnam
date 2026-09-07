@@ -9,6 +9,11 @@ import type { HarnessContext, RouterDecision, ScenarioSnippet } from '../harness
 import { formatProductPrice } from '../../products/product-price.js'
 
 /** Render modular logic scenarios (skills) as a prompt section. */
+/** Tiền Việt cho lời nhắc — gọn, không lẫn dấu để mô hình chép lại đúng. */
+function vnd(n: number): string {
+  return `${new Intl.NumberFormat('vi-VN').format(n)}đ`
+}
+
 function renderScenarios(scenarios: ScenarioSnippet[]): string {
   if (!scenarios.length) return ''
   const body = scenarios.map((s) => `### ${s.name}\n${s.content}`).join('\n\n')
@@ -106,12 +111,19 @@ export function buildGeneratorPrompt(ctx: HarnessContext, decision: RouterDecisi
         const media = [d.imageCount ? `${d.imageCount} ảnh` : '', d.videoCount ? `${d.videoCount} video` : '']
           .filter(Boolean).join(' · ')
         const head = `### ${d.name ?? d.productCode} (mã ${d.productCode})${media ? ` — có ${media}` : ''}`
+        // Giá lấy thẳng từ hệ thống nguồn lúc trả lời, nên nó THẮNG mọi con số
+        // khác trong lời nhắc. Nói rõ để mô hình khỏi lấy giá cũ ở khối trên.
+        const gia = d.price != null
+          ? `\nGiá chính thức: ${vnd(d.price)}${d.priceMax != null ? ` – ${vnd(d.priceMax)}` : ''}${d.unit ? `/${d.unit}` : ''}${d.vatNote ? ` (${d.vatNote})` : ''}`
+          : ''
         // Link dựng sẵn, dán nguyên văn. Nói rõ để mô hình khỏi tự chế link.
         const link = d.miniAppUrl ? `\nLink đặt hàng (dán nguyên văn): ${d.miniAppUrl}` : ''
-        return `${head}\n${d.description ?? ''}${link}`.trim()
+        return `${head}${gia}\n${d.description ?? ''}${link}`.trim()
       })
       .join('\n\n')
-    parts.push(`\n## Tài liệu bán hàng (do công ty soạn — dùng để mô tả sản phẩm cho khách; nếu có ảnh/video thì có thể đề nghị gửi. Sản phẩm nào có "Link đặt hàng" thì gửi kèm link đó cho khách, DÁN NGUYÊN VĂN, tuyệt đối không sửa hay tự ghép link)\n${docs}`)
+    parts.push(`\n## Tài liệu bán hàng (do công ty soạn — dùng để mô tả sản phẩm cho khách; nếu có ảnh/video thì có thể đề nghị gửi.
+GIÁ CHÍNH THỨC ở khối này lấy thẳng từ hệ thống nguồn lúc này — nếu lệch với con số ở khối "Sản phẩm liên quan" phía trên thì LẤY GIÁ Ở ĐÂY.
+Sản phẩm nào có "Link đặt hàng" thì gửi kèm link đó cho khách, DÁN NGUYÊN VĂN, tuyệt đối không sửa, không rút gọn, không tự ghép link.)\n${docs}`)
   }
 
   // L1d — thư viện tài liệu bán hàng. Khác khối trên ở chỗ đây là tài liệu
@@ -134,6 +146,21 @@ export function buildGeneratorPrompt(ctx: HarnessContext, decision: RouterDecisi
       `\n## Thư viện tài liệu bán hàng (đội sale soạn — dùng để trả lời khách.` +
       ` Mục nào ghi "GỬI ĐƯỢC" thì có thể đề nghị gửi cho khách)\n${ds}`,
     )
+  }
+
+  // Kỷ luật dùng dữ liệu. Đặt SAU các khối dữ liệu để câu lệnh trỏ đúng vào thứ
+  // vừa đọc. Chỉ nói về CÁCH DÙNG dữ liệu, không đặt giọng điệu hay kịch bản —
+  // hai thứ đó là của persona và tiêu chí do đội ngũ tự chỉnh, và tiêu chí vẫn
+  // là ưu tiên cao nhất khi mâu thuẫn.
+  if ((ctx.products?.length ?? 0) + (ctx.productDocs?.length ?? 0) + (ctx.docAssets?.length ?? 0) > 0) {
+    parts.push(`
+## Kỷ luật khi tư vấn bán hàng
+1. GIÁ: chỉ dùng con số có trong dữ liệu trên. Không có giá thì nói "em kiểm tra lại rồi báo anh/chị ngay" — TUYỆT ĐỐI không ước lượng, không suy từ sản phẩm khác, không làm tròn.
+2. LINK: chỉ gửi link có sẵn trong dữ liệu và dán nguyên văn. Không tự ghép, không rút gọn, không sửa mã.
+3. Khách hỏi sản phẩm → nêu đúng tên, giá chính thức, điểm đáng mua nhất trong 1–2 câu, rồi gửi link đặt hàng nếu có.
+4. Khách có ý mua (hỏi giá lần hai, hỏi ship, hỏi còn hàng, nói "lấy") → chốt luôn: xác nhận sản phẩm và số lượng, rồi xin TÊN, SỐ ĐIỆN THOẠI, ĐỊA CHỈ. Đừng hỏi lan man thêm.
+5. KHÔNG hứa khuyến mãi, chiết khấu, thời gian giao hay quà tặng nếu dữ liệu không nói. Khách hỏi mà không có dữ liệu → chuyển nhân viên.
+6. Sản phẩm không có trong dữ liệu → không khẳng định shop không bán; nói sẽ kiểm tra lại.`)
   }
 
   // Full recent conversation for context

@@ -108,6 +108,49 @@ export async function mauLinkMiniApp(orgId: string): Promise<string> {
   return process.env.ZALO_MINIAPP_PRODUCT_URL || MAU_LINK_MAC_DINH
 }
 
+/**
+ * Bảng giá theo mã sản phẩm, lấy từ nguồn đang bật.
+ *
+ * AI cần giá THẬT chứ không phải giá trong bảng nội bộ cũ — báo sai giá cho
+ * khách là mất đơn hoặc mất uy tín. Nhưng mỗi tin nhắn đến mà gọi hệ thống
+ * nguồn một lần thì vừa chậm vừa dễ bị chặn, nên nhớ tạm trong thời gian ngắn:
+ * đủ để đổi giá bên nguồn là vài phút sau đã thấy, mà không nện API.
+ */
+const GIA_TTL_MS = 120_000
+const cacheGia = new Map<string, { at: number; bang: Map<string, GiaSanPham> }>()
+
+export interface GiaSanPham {
+  price: number | null
+  priceMax: number | null
+  unit: string | null
+  vatNote: string | null
+  status: string | null
+  inventory: number | null
+}
+
+export async function bangGiaTheoMa(orgId: string): Promise<Map<string, GiaSanPham>> {
+  const hit = cacheGia.get(orgId)
+  if (hit && Date.now() - hit.at < GIA_TTL_MS) return hit.bang
+
+  const bang = new Map<string, GiaSanPham>()
+  try {
+    const kq = await listCrmProducts({ orgId, pageSize: 200 })
+    for (const p of kq.products) {
+      if (!p.code) continue
+      bang.set(p.code.trim().toUpperCase(), {
+        price: p.price, priceMax: p.priceMax, unit: p.unit,
+        vatNote: p.vatNote, status: p.status, inventory: p.inventory,
+      })
+    }
+  } catch {
+    // Nguồn lỗi thì trả bảng rỗng: AI mất phần giá nhưng vẫn tư vấn được, còn
+    // hơn là hỏng cả lượt trả lời. Không cache lần lỗi để lần sau thử lại.
+    return bang
+  }
+  cacheGia.set(orgId, { at: Date.now(), bang })
+  return bang
+}
+
 export async function luuMauLinkMiniApp(orgId: string, mau: string): Promise<void> {
   await prisma.appSetting.upsert({
     where: { orgId_settingKey: { orgId, settingKey: KHOA_MAU_LINK } },
