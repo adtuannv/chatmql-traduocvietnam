@@ -123,12 +123,14 @@ deploy nếu chưa muốn dùng.
 |---|---|
 | `CRM_PRODUCT_SOURCE` | Dùng cầu nối CRM như trước |
 | `FM_PRODUCT_API_URL` / `FM_PRODUCT_API_KEY` | Không dùng nguồn sản phẩm chính thức |
-| `ZALO_MINIAPP_PRODUCT_URL` | Nút gửi link Mini App bị khoá, có ghi rõ lý do |
+| `ZALO_MINIAPP_PRODUCT_URL` | Đặt được trong giao diện, không cần biến này |
 | `CRM_DASHBOARD_TOKEN` | Không dùng nguồn dashboard |
 | `AI_CONTEXT_BUDGET_TIER` | Dùng mức ngân sách mặc định |
 
-Nguồn sản phẩm còn đổi được ngay trong giao diện (trang Sản phẩm → **Nguồn dữ
-liệu**), lựa chọn đó thắng biến môi trường và bỏ được để quay lại.
+Nguồn sản phẩm **và mẫu link Mini App** đều đặt được ngay trong giao diện: trang
+Sản phẩm → **Nguồn dữ liệu**. Giá trị đặt ở đó thắng biến môi trường và bỏ được
+để quay lại. Nhờ vậy bên vận hành tự đổi mà không cần sửa tệp rồi khởi động lại
+máy chủ — đây chính là lý do bản prod từng bị khoá hết nút gửi link.
 
 Các module hoàn toàn mới, không có thì không ai đụng tới: Tài liệu bán hàng, tab
 Sản phẩm trong hội thoại, HDSD và tour tương tác, trợ lý AI nội bộ.

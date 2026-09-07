@@ -52,8 +52,13 @@ export const DropdownMenuContent = React.forwardRef<
     <DM.Content
       ref={ref}
       sideOffset={sideOffset}
+      // Danh sách dài (tài khoản kênh, kênh áp dụng cho bot…) tràn khỏi màn
+      // hình và KHÔNG cuộn được nếu chỉ có `overflow-hidden`: phần dưới bị cắt
+      // mất, người dùng tưởng danh sách chỉ có bấy nhiêu. Giới hạn theo chiều
+      // cao Radix tính sẵn cho khoảng trống thực tế, rồi cho cuộn dọc.
       className={cn(
-        'z-50 min-w-[10rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in',
+        'z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[10rem]',
+        'overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in',
         className,
       )}
       {...props}

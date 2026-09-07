@@ -100,9 +100,8 @@ export function ProductTab({ convId }: { convId: string }) {
         </div>
         {!template && (
           <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
-            Chưa cấu hình link Mini App nên nút gửi đang khoá. Đặt
-            {' '}<code className="font-mono">ZALO_MINIAPP_PRODUCT_URL</code> ở máy chủ, dạng
-            {' '}<code className="font-mono">…/product/{'{code}'}</code>.
+            Chưa đặt link Mini App nên nút gửi đang khoá. Vào trang
+            {' '}<b>Sản phẩm (CRM)</b> → <b>Nguồn dữ liệu</b> để đặt, không cần sửa máy chủ.
           </p>
         )}
       </div>

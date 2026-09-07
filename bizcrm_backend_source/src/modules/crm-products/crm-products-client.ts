@@ -39,6 +39,9 @@ export const CAC_NGUON: CrmProductSource[] = ['official', 'bridge', 'dashboard',
 /** Khoá lưu nguồn do quản trị chọn trong giao diện. */
 const KHOA_NGUON = 'crm.product_source'
 
+/** Khoá lưu mẫu link Mini App do quản trị đặt trong giao diện. */
+const KHOA_MAU_LINK = 'miniapp.url_template'
+
 // Mỗi tin đến đều hỏi nguồn; cache ngắn để khỏi truy vấn liên tục, và đủ ngắn
 // để quản trị đổi xong là thấy hiệu lực gần như ngay.
 const NGUON_TTL_MS = 15_000
@@ -74,6 +77,34 @@ export async function nguonDaChon(orgId: string): Promise<CrmProductSource | nul
 }
 
 /** Lưu chuỗi rỗng để bỏ lựa chọn, quay về cấu hình của máy chủ. */
+/**
+ * Mẫu link Mini App: ưu tiên giá trị quản trị đặt trong giao diện, rồi tới biến
+ * môi trường.
+ *
+ * Để mỗi biến môi trường thì đổi link phải sửa tệp rồi khởi động lại máy chủ —
+ * chỉ kỹ thuật làm được, trong khi địa chỉ Mini App là thứ bên vận hành nắm.
+ * Đúng cái đã xảy ra: bản prod thiếu biến nên mọi nút gửi bị khoá.
+ */
+export async function mauLinkMiniApp(orgId: string): Promise<string> {
+  try {
+    const row = await prisma.appSetting.findFirst({
+      where: { orgId, settingKey: KHOA_MAU_LINK },
+      select: { valuePlain: true },
+    })
+    const v = (row?.valuePlain ?? '').trim()
+    if (v) return v
+  } catch { /* đọc hỏng thì rơi về biến môi trường */ }
+  return process.env.ZALO_MINIAPP_PRODUCT_URL || ''
+}
+
+export async function luuMauLinkMiniApp(orgId: string, mau: string): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { orgId_settingKey: { orgId, settingKey: KHOA_MAU_LINK } },
+    update: { valuePlain: mau },
+    create: { orgId, settingKey: KHOA_MAU_LINK, valuePlain: mau },
+  })
+}
+
 export async function luuNguon(orgId: string, nguon: CrmProductSource | ''): Promise<void> {
   await prisma.appSetting.upsert({
     where: { orgId_settingKey: { orgId, settingKey: KHOA_NGUON } },

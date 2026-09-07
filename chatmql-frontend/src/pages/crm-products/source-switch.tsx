@@ -8,18 +8,21 @@
  * Nguồn nào chưa đủ cấu hình trên máy chủ thì hiện rõ là chưa dùng được và
  * không cho chọn, thay vì cho chọn rồi để danh sách trống không rõ lý do.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Check, Database, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { apiError } from '@/lib/api-client'
 import {
-  SOURCE_LABELS, useSetProductSource, type CrmProductSource, type NguonInfo,
+  SOURCE_LABELS, useSetMiniAppUrl, useSetProductSource,
+  type CrmProductSource, type NguonInfo,
 } from '@/hooks/use-crm-products'
 
 /** Nói rõ mỗi nguồn lấy dữ liệu từ đâu và khi nào nên dùng. */
@@ -33,6 +36,11 @@ const MO_TA: Record<CrmProductSource, string> = {
 export function SourceSwitch({ info }: { info: NguonInfo }) {
   const [mo, setMo] = useState(false)
   const doi = useSetProductSource()
+  const datLink = useSetMiniAppUrl()
+  const [mauLink, setMauLink] = useState(info.miniAppUrlTemplate)
+
+  // Đồng bộ lại khi máy chủ trả giá trị mới, kể cả sau khi lưu.
+  useEffect(() => { setMauLink(info.miniAppUrlTemplate) }, [info.miniAppUrlTemplate])
 
   const dungDuoc = (s: CrmProductSource) =>
     s === 'official' ? info.officialConfigured
@@ -101,6 +109,33 @@ export function SourceSwitch({ info }: { info: NguonInfo }) {
                 </button>
               )
             })}
+          </div>
+
+          {/* Mẫu link Mini App đặt luôn ở đây: để mỗi biến môi trường thì đổi
+              link phải sửa tệp rồi khởi động lại máy chủ — đúng lý do bản prod
+              từng thiếu biến và mọi nút gửi bị khoá. */}
+          <div className="space-y-1.5 border-t pt-3">
+            <Label className="text-[12px] font-semibold">Mẫu link Mini App</Label>
+            <div className="flex gap-1.5">
+              <Input
+                value={mauLink}
+                onChange={(e) => setMauLink(e.target.value)}
+                placeholder="https://zalo.me/s/<id-app>/?page=detail-product&product_id={miniapp}"
+                className="h-8 flex-1 font-mono text-[11px]"
+              />
+              <Button size="sm" className="h-8" disabled={datLink.isPending || mauLink === info.miniAppUrlTemplate}
+                      onClick={() => datLink.mutate(mauLink, {
+                        onSuccess: () => toast.success(mauLink ? 'Đã lưu link Mini App' : 'Đã bỏ link, quay về cấu hình máy chủ'),
+                        onError: (e) => toast.error(apiError(e)),
+                      })}>
+                {datLink.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Lưu'}
+              </Button>
+            </div>
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Phải chứa <code className="font-mono">{'{miniapp}'}</code> — chỗ thay bằng mã sản phẩm bên
+              hệ quản trị Mini App. Bỏ trống thì dùng cấu hình của máy chủ
+              {info.miniAppUrlFromEnv ? ' (đang có)' : ' (đang trống)'}.
+            </p>
           </div>
 
           <div className="flex items-center justify-between gap-2 border-t pt-3">

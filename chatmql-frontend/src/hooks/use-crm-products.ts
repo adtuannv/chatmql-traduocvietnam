@@ -96,6 +96,8 @@ export interface NguonInfo {
   officialConfigured: boolean
   /** Mẫu link Mini App, chứa {miniapp}/{code}/{id}. Rỗng = chưa cấu hình. */
   miniAppUrlTemplate: string
+  /** Mẫu lấy từ biến môi trường — để nói rõ giá trị đang từ đâu. */
+  miniAppUrlFromEnv: string
   canEdit: boolean
 }
 
@@ -105,6 +107,16 @@ export function useSetProductSource() {
   return useMutation({
     mutationFn: async (source: CrmProductSource | null) =>
       (await api.put('/crm-products/source', { source })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm-products'] }),
+  })
+}
+
+/** Đặt mẫu link Mini App; chuỗi rỗng = quay về biến môi trường của máy chủ. */
+export function useSetMiniAppUrl() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (template: string) =>
+      (await api.put('/crm-products/miniapp-url', { template })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['crm-products'] }),
   })
 }

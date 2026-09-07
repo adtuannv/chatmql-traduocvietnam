@@ -8,7 +8,8 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '../../shared/prisma-client.js'
 import {
   searchCrmProducts, listCrmProducts, resolveSource, resolveSourceFor,
-  nguonDaChon, luuNguon, CAC_NGUON, type CrmProductSource,
+  nguonDaChon, luuNguon, mauLinkMiniApp, luuMauLinkMiniApp,
+  CAC_NGUON, type CrmProductSource,
 } from './crm-products-client.js'
 
 type NguoiDung = { orgId: string; role: string; id: string }
@@ -43,7 +44,9 @@ export async function crmProductRoutes(app: FastifyInstance): Promise<void> {
       sources: CAC_NGUON,
       dashboardConfigured: !!process.env.CRM_DASHBOARD_TOKEN,
       officialConfigured: !!(process.env.FM_PRODUCT_API_URL && process.env.FM_PRODUCT_API_KEY),
-      miniAppUrlTemplate: process.env.ZALO_MINIAPP_PRODUCT_URL || '',
+      miniAppUrlTemplate: await mauLinkMiniApp(u.orgId),
+      /** Mẫu ở biến môi trường — để giao diện nói rõ đang lấy từ đâu. */
+      miniAppUrlFromEnv: process.env.ZALO_MINIAPP_PRODUCT_URL || '',
       canEdit: canEditSource(u.role),
     }
   })
@@ -125,6 +128,32 @@ export async function crmProductRoutes(app: FastifyInstance): Promise<void> {
       // Dữ liệu hỏng thì trả rỗng, giao diện vẫn cho gõ tay.
       return { items: [], updatedAt: row.updatedAt }
     }
+  })
+
+  /**
+   * Đặt mẫu link Mini App ngay trong giao diện.
+   *
+   * Chuỗi phải chứa một trong ba chỗ thay: {miniapp} (mã bên hệ quản trị Mini
+   * App — thứ Mini App thật sự hiểu), {code} hoặc {id}. Không có chỗ thay nào
+   * thì mọi sản phẩm ra cùng một link, nên chặn ngay tại đây.
+   */
+  app.put<{ Body: { template?: string | null } }>('/api/v1/crm-products/miniapp-url', async (request, reply) => {
+    const u = request.user as NguoiDung
+    if (!canEditSource(u.role)) return reply.status(403).send({ error: 'Không có quyền đặt link Mini App' })
+
+    const mau = (request.body?.template ?? '').trim()
+    if (mau) {
+      if (!/^https?:\/\//i.test(mau)) {
+        return reply.status(400).send({ error: 'Link phải bắt đầu bằng http:// hoặc https://' })
+      }
+      if (!/\{(miniapp|code|id)\}/.test(mau)) {
+        return reply.status(400).send({
+          error: 'Link phải chứa {miniapp}, {code} hoặc {id} — thiếu thì mọi sản phẩm ra cùng một link',
+        })
+      }
+    }
+    await luuMauLinkMiniApp(u.orgId, mau)
+    return { miniAppUrlTemplate: await mauLinkMiniApp(u.orgId) }
   })
 
   /**
