@@ -68,12 +68,20 @@ model Organization {
   aiLogicProposals      AiLogicProposal[]
   aiMasterSessions      AiMasterSession[]
   aiTraces              AiTrace[]
+  aiBots                AiBot[]
   products              Product[]
   productCategories     ProductCategory[]
   knowledgeCategories   KnowledgeCategory[]
   quotes                Quote[]
   quoteTemplates        QuoteTemplate[]
   quoteEvents           QuoteEvent[]
+  websiteWidgets        WebsiteWidget[]
+  productDocs           ProductDoc[]
+  docFolders            DocFolder[]
+  docAssets             DocAsset[]
+  aiEvalCases           AiEvalCase[]
+  aiEvalRuns            AiEvalRun[]
+  roles                 Role[]
 
   @@map("organizations")
 }
@@ -92,6 +100,108 @@ model Team {
   @@map("teams")
 }
 
+// ── Widget Live Chat cho website ────────────────────────────────────
+/// Một website được phép nhúng nút chat. Một tổ chức có thể có nhiều website,
+/// mỗi cái một `siteKey` riêng để phân biệt nguồn khách và cấu hình giao diện.
+model WebsiteWidget {
+  id      String @id @default(uuid())
+  orgId   String @map("org_id")
+  name    String // "Website Tra Duoc Viet Nam", "Landing khuyến mãi"…
+
+  /// Khoá nhúng vào mã trang — CÔNG KHAI, không phải bí mật. Chặn lạm dụng bằng
+  /// danh sách tên miền bên dưới chứ không bằng cách giấu khoá này.
+  siteKey String @unique @map("site_key")
+
+  /// Tên miền được phép nhúng. Mảng rỗng = cho phép mọi nơi (chỉ nên dùng khi thử).
+  domains  Json    @default("[]")
+  isActive Boolean @default(true) @map("is_active")
+
+  // ── Giao diện ──
+  /// Tên thương hiệu khách nhìn thấy trong cửa sổ chat. Khác `name` — `name`
+  /// chỉ để quản trị viên phân biệt các website trong danh sách.
+  displayName  String? @map("display_name")
+  /// URL logo hiện trên nút chat và đầu cửa sổ. Rỗng → dùng icon mặc định.
+  logoUrl      String? @map("logo_url")
+  title        String @default("Chat với chúng tôi")
+  greeting     String @default("Xin chào! Chúng tôi có thể giúp gì cho bạn?")
+  primaryColor String @default("#0045ff") @map("primary_color")
+  /// right | left — vị trí nút trên màn hình.
+  position     String @default("right")
+
+  // ── Kênh hiện trên nút bấm ──
+  liveChatEnabled Boolean @default(true) @map("live_chat_enabled")
+  zaloUrl         String? @map("zalo_url")
+  facebookUrl     String? @map("facebook_url")
+  phoneNumber     String? @map("phone_number")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("website_widgets")
+}
+
+// ── Phân quyền động (RBAC) ──────────────────────────────────────────
+// Thay dần cho cột `User.role` cố định 4 giá trị. Giai đoạn chuyển tiếp: cả hai
+// cùng tồn tại, `User.role` vẫn là nguồn quyết định cho tới khi chuyển xong.
+
+/// Danh mục quyền do HỆ THỐNG định nghĩa (seed từ permission-registry.ts).
+/// Tổ chức không tạo/xoá được — chỉ chọn khi dựng vai trò.
+model Permission {
+  key       String   @id // "contacts.delete" = <module>.<action>
+  module    String // contacts, conversations, ai…
+  action    String // view, create, update, delete, import, export, approve…
+  label     String // "Xoá khách hàng"
+  group     String // Nhóm hiển thị trên ma trận: "Khách hàng"
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  roles RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+/// Vai trò của một tổ chức. Gồm CẢ quyền tính năng lẫn phạm vi dữ liệu —
+/// tách hai thứ này ra từng khiến Hội thoại và Khách hàng lệch nhau.
+model Role {
+  id          String  @id @default(uuid())
+  orgId       String  @map("org_id")
+  name        String
+  description String?
+  /// Vai trò gốc (owner/admin/manager/member): không xoá, không đổi tên.
+  isSystem    Boolean @default(false) @map("is_system")
+  /// Khớp với giá trị `User.role` cũ. Null = vai trò do tổ chức tự tạo.
+  systemKey   String? @map("system_key")
+  /// all | team | own — đọc bởi shared/data-scope.ts
+  dataScope   String  @default("own") @map("data_scope")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org         Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  permissions RolePermission[]
+  users       User[]
+
+  @@unique([orgId, name])
+  @@index([orgId, systemKey])
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId        String @map("role_id")
+  permissionKey String @map("permission_key")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionKey], references: [key], onDelete: Cascade)
+
+  @@id([roleId, permissionKey])
+  @@index([permissionKey])
+  @@map("role_permissions")
+}
+
 // ── User ────────────────────────────────────────────────────────────
 // CRM user with role-based access
 model User {
@@ -102,6 +212,9 @@ model User {
   passwordHash String   @map("password_hash")
   fullName     String   @map("full_name")
   role         String   @default("member") // owner, admin, manager, member
+  /// Vai trò động (bảng Role). Trong giai đoạn chuyển tiếp có thể null —
+  /// khi null thì hệ thống vẫn dùng cột `role` ở trên.
+  roleId       String?  @map("role_id")
   avatarUrl    String?  @map("avatar_url")
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -109,6 +222,7 @@ model User {
 
   org              Organization           @relation(fields: [orgId], references: [id], onDelete: Cascade)
   team             Team?                  @relation(fields: [teamId], references: [id])
+  roleRef          Role?                  @relation(fields: [roleId], references: [id])
   channelAccounts  ChannelAccount[]
   channelAccess    ChannelAccountAccess[]
   assignedContacts Contact[]              @relation("AssignedContacts")
@@ -312,6 +426,9 @@ model Conversation {
   isPinned                 Boolean   @default(false) @map("is_pinned")
   displayName              String?   @map("display_name") // Original name on this channel — survives contact merge
   aiMode                   String    @default("manual") @map("ai_mode") // manual, auto, suggest (AI auto-reply mode)
+  // Ghi đè luật "chỉ trả lời khi nhắc tên" cho riêng hội thoại này.
+  // null = theo cài đặt chung của tổ chức; true/false = quyết định tại đây.
+  requireMention     Boolean? @map("require_mention")
   aiModeReason             String?   @map("ai_mode_reason")
   aiPausedUntil            DateTime? @map("ai_paused_until")
   assignedUserId           String?   @map("assigned_user_id") // handoff assignee (soft ref to User)
@@ -652,6 +769,17 @@ model AiConfig {
   autoReplyEnabled        Boolean  @default(false) @map("auto_reply_enabled") // org master switch
   debounceSeconds         Int      @default(5) @map("debounce_seconds")
   prefilterKeywords       String?  @map("prefilter_keywords") // Pass 0 cheap handoff keywords
+  // Trong nhóm, AI trả lời mọi câu là phá hội thoại của người thật. Bật cờ này
+  // thì chỉ những tin có nhắc tên mới được trả lời.
+  //
+  // MẶC ĐỊNH BẬT theo yêu cầu vận hành: trong nhóm thì im lặng an toàn hơn là
+  // chen ngang. LƯU Ý KHI NÂNG CẤP: tổ chức chưa có bản ghi cấu hình sẽ nhận
+  // giá trị này, nghĩa là AI thôi trả lời nhóm cho tới khi có người nhắc tên —
+  // đặt tên nhận biết ở AI → Trả lời tự động trước khi deploy.
+  groupRequireMention     Boolean  @default(true) @map("group_require_mention")
+  // Các tên gọi coi là "được nhắc", cách nhau bằng dấu phẩy. Trống thì dùng
+  // tên các bot đang bật của tổ chức.
+  mentionNames            String?  @map("mention_names")
   // ── RAG + embeddings (M3) ──
   ragTopK                 Int      @default(5) @map("rag_top_k") // number of KB entries to retrieve
   ragMinScore             Float?   @map("rag_min_score") // min cosine similarity for a RAG hit (null = default 0.35)
@@ -813,6 +941,32 @@ model AiScenarioVersion {
 
   @@index([scenarioId, version])
   @@map("ai_scenario_versions")
+}
+
+// ── AI Bot ("con AI") ───────────────────────────────────────────────
+// Nhiều Agent AI trong cùng tổ chức. Bộ train (kho tri thức, kịch bản, logic
+// docs) dùng CHUNG ở cấp org; mỗi bot chỉ có riêng persona/playbook/model/
+// tools và danh sách KÊNH mà nó phục vụ. Field null = kế thừa cấu hình org.
+model AiBot {
+  id                String   @id @default(uuid())
+  orgId             String   @map("org_id")
+  name              String
+  avatarEmoji       String?  @map("avatar_emoji")
+  description       String?
+  enabled           Boolean  @default(true)
+  provider          String? // null = org/task default
+  model             String?
+  personaPrompt     String?  @map("persona_prompt") // overrides org persona doc
+  playbookPrompt    String?  @map("playbook_prompt") // overrides org playbook doc
+  toolsJson         Json?    @map("tools_json") // per-bot ToolsConfig override
+  channelAccountIds Json     @default("[]") @map("channel_account_ids") // channels this bot serves
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("ai_bots")
 }
 
 // ── AI Reply Run ────────────────────────────────────────────────────
@@ -1747,6 +1901,7 @@ model Product {
   currency         String                       @default("VND")
   specs            Json                         @default("{}") // thuộc tính linh hoạt, chuẩn theo category.specSchema
   images           String[]                     @default([])
+  videoUrls        String[]                     @default([]) @map("video_urls") // link video (YouTube/mp4) cho tài liệu bán hàng
   status           String                       @default("active") // draft | active | archived
   sortOrder        Int                          @default(0) @map("sort_order")
   source           String                       @default("manual") // manual | import | sync | ai_master
@@ -1949,4 +2104,178 @@ model QuoteCounter {
 
   @@id([orgId, period])
   @@map("quote_counters")
+}
+
+// ── AI Eval ("bộ câu hỏi vàng") ──────────────────────────────────────
+// Regression-eval cho AI: admin giữ bộ câu hỏi chuẩn + tiêu chí chấm;
+// mỗi lượt chạy sinh trả lời qua đường simulate (không chạm khách thật)
+// rồi để LLM chấm đạt/trượt. Xem src/modules/ai/ai-eval-service.ts.
+model AiEvalCase {
+  id             String   @id @default(uuid())
+  orgId          String   @map("org_id")
+  name           String
+  question       String // tin nhắn khách hàng để mô phỏng
+  criteria       String // tiêu chí chấm (rubric) cho giám khảo LLM
+  conversationId String?  @map("conversation_id") // hội thoại thật (tuỳ chọn) làm ngữ cảnh mô phỏng
+  botId          String?  @map("bot_id") // ép dùng một Agent cụ thể (tuỳ chọn)
+  enabled        Boolean  @default(true)
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("ai_eval_cases")
+}
+
+model AiEvalRun {
+  id         String    @id @default(uuid())
+  orgId      String    @map("org_id")
+  trigger    String // manual | proposal
+  proposalId String?   @map("proposal_id") // AiLogicProposal được kiểm định (nếu có)
+  model      String? // model giám khảo đã dùng
+  status     String    @default("running") // running | done | failed
+  total      Int       @default(0)
+  passed     Int       @default(0)
+  failed     Int       @default(0)
+  errored    Int       @default(0)
+  note       String?
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  org     Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  results AiEvalResult[]
+
+  @@index([orgId])
+  @@map("ai_eval_runs")
+}
+
+model AiEvalResult {
+  id        String   @id @default(uuid())
+  runId     String   @map("run_id")
+  caseId    String   @map("case_id")
+  caseName  String   @map("case_name")
+  question  String
+  reply     String? // null khi AI quyết định không trả lời / lỗi sinh
+  verdict   String // pass | fail | error
+  reason    String
+  latencyMs Int?     @map("latency_ms")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  run AiEvalRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@map("ai_eval_results")
+}
+
+/// Tài liệu bán hàng của MỘT sản phẩm (ảnh, mô tả, video) — tri thức do ChatMQL
+/// sở hữu, gắn vào sản phẩm theo MÃ (productCode) chứ không theo id bảng
+/// `products` nội bộ. Nhờ vậy khi chuyển sang nguồn sản phẩm chính thức của
+/// TDVN, toàn bộ tài liệu đã soạn vẫn bám đúng sản phẩm.
+/// Vừa là tư liệu cho nhân viên, vừa là nguồn tri thức AI đọc khi tư vấn.
+model ProductDoc {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  /// Danh mục trong CÂY tài liệu bán hàng (doc_folders). Nhờ nó sản phẩm xếp
+  /// được nhiều cấp (Trà > Trà xanh), không phụ thuộc danh mục phẳng của CRM.
+  folderId    String?  @map("folder_id")
+  /// Mã sản phẩm ở hệ thống nguồn. Khoá liên kết duy nhất.
+  productCode String   @map("product_code")
+  /// Tên tại thời điểm soạn — để hiện khi hệ thống nguồn lỗi/chậm.
+  name        String?
+  description String?
+  images      String[] @default([])
+  videoUrls   String[] @default([]) @map("video_urls")
+  /// Từ khoá/tên gọi khác, giúp AI tìm đúng tài liệu.
+  keywords    String?
+  /// Mã sản phẩm bên Zalo Mini App, dùng dựng link gửi khách.
+  /// Để ở đây chứ không ở bảng sản phẩm: ánh xạ này là tri thức của ChatMQL,
+  /// phải sống độc lập với nguồn sản phẩm đang bật, nếu không thì đổi nguồn
+  /// là mất sạch công ghép.
+  miniAppId   String?  @map("mini_app_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  folder DocFolder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, productCode])
+  @@index([orgId, folderId])
+  @@index([orgId])
+  @@map("product_docs")
+}
+
+/// Thư mục của THƯ VIỆN tài liệu bán hàng — admin tự tạo, lồng nhau tuỳ ý.
+/// Khác `product_docs` (tài liệu gắn cứng vào một mã sản phẩm): thư viện là kho
+/// tài nguyên chung, một tài nguyên có thể dùng cho nhiều mã hoặc không mã nào
+/// (biểu giá, ảnh xưởng, banner chiến dịch...).
+model DocFolder {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  parentId    String?  @map("parent_id")
+  name        String
+  description String?
+  /// Emoji hiển thị cho dễ nhận diện.
+  icon        String?
+  /// sales = được phép gửi khách · internal = chỉ nội bộ · ai_only = chỉ AI đọc.
+  /// Tài nguyên thừa kế mức này khi tạo, và luồng gửi khách CHẶN theo cờ này.
+  visibility  String   @default("sales")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  parent   DocFolder?   @relation("DocFolderTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children DocFolder[]  @relation("DocFolderTree")
+  assets   DocAsset[]
+  productDocs ProductDoc[]
+
+  @@index([orgId, parentId])
+  @@map("doc_folders")
+}
+
+/// Một tài nguyên trong thư viện: ảnh, video, pdf, tài liệu, văn bản thuần, hoặc
+/// chỉ là một đường dẫn. Nhân viên tra cứu để gửi khách; AI đọc phần chữ khi tư vấn.
+model DocAsset {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  folderId    String?  @map("folder_id")
+  /// product | image | video | pdf | doc | text | link
+  /// `product` là tài liệu bán hàng của một mặt hàng: có bộ ảnh + nhiều video,
+  /// nên dùng `images`/`videoUrls` thay vì một `fileUrl` đơn lẻ.
+  kind        String
+  title       String
+  description String?
+  /// Nội dung chữ (kind=text) hoặc chữ trích từ pdf/doc — đây là phần AI đọc.
+  textContent String?  @map("text_content")
+  /// Đường dẫn file đã tải lên máy chủ (tương đối, ví dụ /uploads/doc-assets/...).
+  fileUrl     String?  @map("file_url")
+  thumbUrl    String?  @map("thumb_url")
+  /// Bộ ảnh (loại `product`). Ảnh đầu tiên là ảnh đại diện.
+  images      String[] @default([])
+  /// Danh sách link video (YouTube/mp4).
+  videoUrls   String[] @default([]) @map("video_urls")
+  fileSize    Int?     @map("file_size")
+  mimeType    String?  @map("mime_type")
+  /// Link ngoài (Drive, YouTube...) khi không tải file về.
+  sourceUrl   String?  @map("source_url")
+  /// Id ở hệ thống nguồn (fileId Drive) — khoá chống nhập trùng khi chạy lại script.
+  sourceId    String?  @map("source_id")
+  /// Mã sản phẩm dùng tài nguyên này. Rỗng = tài nguyên chung, không theo sản phẩm.
+  productCodes String[] @default([]) @map("product_codes")
+  tags        String[] @default([])
+  visibility  String   @default("sales")
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  folder DocFolder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, sourceId])
+  @@index([orgId, folderId])
+  @@index([orgId, kind])
+  @@map("doc_assets")
 }

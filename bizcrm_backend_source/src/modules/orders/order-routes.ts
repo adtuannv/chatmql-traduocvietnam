@@ -756,7 +756,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
 
   // ── Tạo đơn ───────────────────────────────────────────────────────
   app.post<{
-    Body: Omit<CreateOrderInput, 'orgId' | 'createdUserId'>
+    Body: Omit<CreateOrderInput, 'orgId' | 'createdUserId' | 'source'> & { aiPendingActionId?: string }
   }>('/api/v1/orders/create', async (request, reply) => {
     const user = request.user as AuthUser
     const body = request.body
@@ -805,6 +805,21 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
       if (contact) contactId = contact.id
     }
 
+    // Cờ nguồn đơn cho báo cáo Chat → Đơn: đơn chỉ được tính là 'ai' khi
+    // client gửi kèm aiPendingActionId trỏ tới một nháp đơn AI THẬT của org
+    // (AiPendingAction type=create_order). Không tin cờ tự khai từ trình duyệt.
+    // Lưu ý: confirmAction() ở pending-action-service.ts hiện chỉ đánh dấu
+    // confirmed chứ KHÔNG tự tạo đơn — luồng dự kiến là FE prefill form từ
+    // payload nháp rồi gọi route này kèm aiPendingActionId.
+    let orderSource: 'ai' | 'staff' = 'staff'
+    if (body.aiPendingActionId) {
+      const pendingAi = await prisma.aiPendingAction.findFirst({
+        where: { id: body.aiPendingActionId, orgId: user.orgId, type: 'create_order' },
+        select: { id: true },
+      })
+      if (pendingAi) orderSource = 'ai'
+    }
+
     try {
       const result = await createOrderAndSync({
         ...body,
@@ -812,6 +827,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
         contactId,
         orgId: user.orgId,
         createdUserId: user.id,
+        source: orderSource,
         // Người lên đơn LUÔN là người đang đăng nhập, lấy từ JWT.
         //
         // Trước đây lấy body.sellerName do trình duyệt gửi lên, mà giao diện lại

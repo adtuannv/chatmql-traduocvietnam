@@ -22,8 +22,10 @@ import { generateWithOpenai, generateWithOpenaiMessages, type OpenaiMessage } fr
 import { generateWithAnthropic } from '../providers/anthropic.js'
 import { generateWithGemini } from '../providers/gemini.js'
 import { getAiConfig, getEffectiveConfigForTask, getProviderApiKey, ensureQuota } from '../ai-config-service.js'
+import { resolveBotForConversation, resolveBotById, type ResolvedBot } from '../ai-bot-service.js'
 import { logUsage } from '../ai-service.js'
 import { assembleContext } from './context-assembler.js'
+import { getContextBudgets, truncate } from './budgets.js'
 import { runPreFilter } from './pre-filter.js'
 import { buildRouterPrompt, parseRouterDecision } from '../prompts/ai-router.js'
 import { buildGeneratorPrompt, buildAgentSystemPrompt } from '../prompts/auto-reply.js'
@@ -325,7 +327,7 @@ export async function runHarness(
   convId: string,
   turnText: string,
   mode: string = 'suggest', // 'suggest' | 'auto' (validated upstream; manual never reaches here)
-  opts: HarnessOptions = {},
+  opts: HarnessOptions = {}, // forceBotId: trình mô phỏng chat demo theo từng bot
 ): Promise<HarnessResult> {
   const started = Date.now()
   // Pre-generate runId so traces can be linked before AiReplyRun row is written
@@ -354,19 +356,52 @@ export async function runHarness(
     }
   }
 
+  // Agent AI phục vụ hội thoại này (gán theo KÊNH), hoặc bot do trình mô phỏng
+  // ép dùng. Bot chỉ ghi đè provider/model/persona/playbook/tools của nó; field
+  // nào bot để trống thì rơi về cấu hình chung của tổ chức. Bọc `.catch` để một
+  // lỗi tra cứu bot không bao giờ làm hỏng cả lượt trả lời.
+  const bot: ResolvedBot | null = opts.forceBotId
+    ? await resolveBotById(orgId, opts.forceBotId).catch(() => null)
+    : await resolveBotForConversation(orgId, convId).catch(() => null)
+
+  // TDVN chưa có channel-override như eCDP, nên ghi đè model ngay tại đây thay vì
+  // truyền tham số thứ 3 vào getEffectiveConfigForTask (giữ nguyên chữ ký hàm đó).
+  // Thứ tự ưu tiên: bot → task override → mặc định org.
+  const withBotModel = (c: { provider: string; model: string }) => ({
+    provider: bot?.provider || c.provider,
+    model: bot?.model || c.model,
+  })
+
   // Decide generation mode up-front: agent (tool-calling) when the generator
   // provider is OpenAI-compatible AND at least one tool is enabled. Agent mode
   // fetches KB/products via tools, so we skip pre-injected RAG.
-  const genCfg = getEffectiveConfigForTask(cfg, 'auto_reply')
-  const toolsCfg = await getToolsConfig(orgId)
+  const genCfg = withBotModel(getEffectiveConfigForTask(cfg, 'auto_reply'))
+  const toolsCfg = bot?.toolsConfig ?? await getToolsConfig(orgId)
   const anyToolEnabled = toolsCfg.search_products.enabled || toolsCfg.search_knowledge.enabled
   const agentMode = isOpenAiCompatible(genCfg.provider) && anyToolEnabled
 
   // ── Assemble context (L0/L2/L5/L6; RAG pre-fetch skipped in agent mode) ─────
-  const ctx: HarnessContext = await assembleContext(orgId, convId, turnText, provisionalRunId, { skipRag: agentMode, minScore: cfg.ragMinScore ?? undefined, historyBefore: opts.historyBefore })
+  // Ngân sách ký tự tính theo MODEL SINH TRẢ LỜI thực dùng (sau khi bot ghi đè):
+  // model long-context → bậc `large` (ít cắt tài liệu train), còn lại → `base`.
+  const budgets = getContextBudgets(genCfg.model)
+  const ctx: HarnessContext = await assembleContext(orgId, convId, turnText, provisionalRunId, {
+    skipRag: agentMode,
+    minScore: cfg.ragMinScore ?? undefined,
+    budgets,
+    historyBefore: opts.historyBefore,
+  })
+
+  // Persona/playbook riêng của bot thay cho logic doc cấp org. Phần còn lại của
+  // bộ train (kho tri thức, kịch bản, tiêu chí) vẫn dùng CHUNG cho mọi Agent.
+  // CẮT theo đúng ngân sách persona/playbook như doc cấp org: trước đây prompt
+  // của bot đi thẳng vào ctx KHÔNG qua truncate → bot "xịn" được vô hạn ký tự
+  // trong khi org bị cắt (bất nhất + nổ ngân sách token). FE hiển thị đúng
+  // ngân sách này nên người soạn biết trước phần nào sẽ bị cắt.
+  if (bot?.personaPrompt) ctx.logic.persona = truncate(bot.personaPrompt, budgets.persona)
+  if (bot?.playbookPrompt) ctx.logic.playbook = truncate(bot.playbookPrompt, budgets.playbook)
 
   // ── Pass 1: router ──────────────────────────────────────────────────────────
-  const routerCfg = getEffectiveConfigForTask(cfg, 'ai_router')
+  const routerCfg = withBotModel(getEffectiveConfigForTask(cfg, 'ai_router'))
   const routerKey = await getProviderApiKey(orgId, routerCfg.provider)
   if (!routerKey) {
     logger.warn('[harness] No API key for ai_router provider=%s', routerCfg.provider)
@@ -593,6 +628,7 @@ export async function runHarness(
       reply: replyText,
       intents_dung: routerDecision.intents ?? [],
       che_do: agentMode ? 'agent (function-calling)' : 'pipeline (pre-inject)',
+      bot: bot ? { id: bot.id, ten: bot.name } : undefined,
       so_lan_goi_cong_cu: toolCalls,
       // Ghi rõ những công cụ ĐÃ ĐƯA cho mô hình. Không có dòng này thì khi AI
       // không gọi công cụ, không phân biệt được là "không được đưa" hay "được

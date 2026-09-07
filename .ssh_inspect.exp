@@ -1,7 +1,0 @@
-#!/usr/bin/expect -f
-set timeout 30
-set password {lZysa%hqEWup}
-spawn ssh -o StrictHostKeyChecking=no -p 2299 root@160.191.160.53 "ls -la /www/wwwroot/crm_biz"
-expect "password:"
-send "$password\r"
-expect eof

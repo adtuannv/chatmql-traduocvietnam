@@ -35,6 +35,18 @@ export interface KbSnippet {
   score?: number | null
 }
 
+/**
+ * L1c — tài liệu bán hàng do ChatMQL soạn cho một mã sản phẩm (ảnh/mô tả/video).
+ * Nguồn tri thức sản phẩm CHÍNH sau khi bảng products nội bộ ngừng dùng.
+ */
+export interface ProductDocSnippet {
+  productCode: string
+  name: string | null
+  description: string | null
+  imageCount: number
+  videoCount: number
+}
+
 /** L1b — product retrieved via semantic search, injected for accurate sales/quote replies. */
 export interface ProductSnippet {
   id: string
@@ -80,6 +92,8 @@ export interface HarnessContext {
   kbSnippets: KbSnippet[]
   /** L1b — product RAG snippets (semantic; empty if none). */
   products: ProductSnippet[]
+  /** L1c — tài liệu bán hàng theo mã sản phẩm. */
+  productDocs: ProductDocSnippet[]
   /** L2 — contact fact sheet (null if no contact yet). */
   contact: ContactProfile | null
   /** L3 — thread/contact memory facts (active facts for this contact). */
@@ -150,4 +164,6 @@ export interface HarnessOptions {
   signal?: AbortSignal
   /** Chỉ lấy lịch sử TRƯỚC mốc này — tránh tin đang xử lý xuất hiện 2 lần. */
   historyBefore?: Date
+  /** Ép dùng một Agent cụ thể thay vì bot gán theo kênh (trình mô phỏng / demo theo bot). */
+  forceBotId?: string
 }

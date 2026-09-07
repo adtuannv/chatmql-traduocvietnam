@@ -16,7 +16,7 @@ const SELECT = {
   id: true, categoryId: true, name: true, code: true, slug: true,
   description: true, notes: true, keywords: true, tags: true,
   priceType: true, price: true, priceMax: true, currency: true, specs: true,
-  images: true, status: true, sortOrder: true, source: true,
+  images: true, videoUrls: true, status: true, sortOrder: true, source: true,
   createdAt: true, updatedAt: true,
   category: { select: { id: true, name: true } },
 } as const
@@ -82,6 +82,7 @@ export type ProductInput = {
   currency?: string
   specs?: unknown
   images?: string[]
+  videoUrls?: string[]
   status?: string
   sortOrder?: number
   source?: string
@@ -108,6 +109,7 @@ export async function createProduct(orgId: string, data: ProductInput, createdBy
         currency: data.currency ?? 'VND',
         specs: (data.specs ?? {}) as object,
         images: data.images ?? [],
+        videoUrls: data.videoUrls ?? [],
         status: data.status ?? 'active',
         sortOrder: data.sortOrder ?? 0,
         source: data.source ?? 'manual',
@@ -147,6 +149,7 @@ export async function updateProduct(orgId: string, id: string, data: Partial<Pro
   if (d.currency !== undefined) patch.currency = d.currency
   if (d.specs !== undefined) patch.specs = d.specs as object
   if (d.images !== undefined) patch.images = d.images
+  if (d.videoUrls !== undefined) patch.videoUrls = d.videoUrls
   if (d.status !== undefined) patch.status = d.status
   if (d.sortOrder !== undefined) patch.sortOrder = d.sortOrder
   try {

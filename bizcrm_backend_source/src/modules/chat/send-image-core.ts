@@ -18,6 +18,7 @@ import { getPoolEntry, sendImageViaPool } from '../zalo/zalo-pool.js'
 import { checkLimits, recordAction } from '../zalo/zalo-rate-limiter.js'
 import { PRODUCT_UPLOADS_DIR } from '../products/product-routes.js'
 import { CHAT_MEDIA_DIR } from './chat-media-store.js'
+import { DOC_ASSETS_DIR } from '../doc-library/doc-assets-store.js'
 import { emitNewMessage } from '../realtime/socket-gateway.js'
 import { transformMessageForFrontend } from './chat-routes.js'
 
@@ -47,6 +48,7 @@ function localPathOf(imageUrl: string): string | null {
   const localDirs: Array<[string, string]> = [
     ['/uploads/products/', PRODUCT_UPLOADS_DIR],
     ['/uploads/chat-media/', CHAT_MEDIA_DIR],
+    ['/uploads/doc-assets/', DOC_ASSETS_DIR],
   ]
   for (const [prefix, dir] of localDirs) {
     const idx = imageUrl.indexOf(prefix)

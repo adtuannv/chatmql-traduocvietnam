@@ -98,6 +98,20 @@ export function buildGeneratorPrompt(ctx: HarnessContext, decision: RouterDecisi
     parts.push(`\n## Sản phẩm liên quan (dùng để tư vấn & báo giá chính xác — KHÔNG bịa giá/sản phẩm ngoài danh sách)\n${list}`)
   }
 
+  // L1c — tài liệu bán hàng do công ty tự soạn cho từng mã sản phẩm. Đặt SAU
+  // khối sản phẩm để mô tả chi tiết bổ sung cho giá/tồn lấy từ hệ thống nguồn.
+  if (ctx.productDocs && ctx.productDocs.length > 0) {
+    const docs = ctx.productDocs
+      .map((d) => {
+        const media = [d.imageCount ? `${d.imageCount} ảnh` : '', d.videoCount ? `${d.videoCount} video` : '']
+          .filter(Boolean).join(' · ')
+        const head = `### ${d.name ?? d.productCode} (mã ${d.productCode})${media ? ` — có ${media}` : ''}`
+        return `${head}\n${d.description ?? ''}`.trim()
+      })
+      .join('\n\n')
+    parts.push(`\n## Tài liệu bán hàng (do công ty soạn — dùng để mô tả sản phẩm cho khách; nếu có ảnh/video thì có thể đề nghị gửi)\n${docs}`)
+  }
+
   // Full recent conversation for context
   if (ctx.recentMessages.length > 0) {
     const transcript = ctx.recentMessages

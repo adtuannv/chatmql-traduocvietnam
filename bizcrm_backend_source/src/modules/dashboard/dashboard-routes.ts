@@ -1,4 +1,5 @@
 import { SenderType } from '../../shared/constants.js'
+import { resolveScopedAccountIds } from './report-routes.js'
 import type { FastifyInstance } from 'fastify'
 import { authMiddleware } from '../auth/auth-middleware.js'
 import { prisma } from '../../shared/prisma-client.js'
@@ -145,8 +146,22 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // GET /api/v1/dashboard/message-volume — last 7 days
-  app.get('/api/v1/dashboard/message-volume', async (request) => {
-    const user = request.user as { orgId: string }
+  app.get<{ Querystring: { channel?: string; accountId?: string } }>(
+    '/api/v1/dashboard/message-volume', async (request, reply) => {
+    const user = request.user as { id: string; role: string; orgId: string }
+    // Cùng phạm vi với báo cáo Chat → Đơn: vai trò (nhân viên/quản lý chỉ thấy
+    // tài khoản được cấp) ∩ bộ lọc kênh/tài khoản trên UI — hai khối trên cùng
+    // màn Tổng quan không được lệch số như đợt kênh sandbox trước đây.
+    const scoped = await resolveScopedAccountIds(user.orgId, user, request.query)
+    if (scoped.error) return reply.status(scoped.status ?? 400).send({ error: scoped.error })
+    // Chỉ kênh đang sống — đồng nhất với /kpi (kênh sandbox của máy mô phỏng
+    // từng khiến thẻ "Tin nhắn hôm nay" và cột biểu đồ cùng ngày lệch số).
+    const liveAcc = { isDisabled: false, deletedAt: null }
+    const convScope = scoped.accountIds
+      ? scoped.accountIds.length
+        ? { channelAccountId: { in: scoped.accountIds }, channelAccount: liveAcc }
+        : { channelAccountId: '__none__' }
+      : { channelAccount: liveAcc }
     const days: { date: string; sent: number; received: number }[] = []
 
     for (let i = 6; i >= 0; i--) {
@@ -157,14 +172,14 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       const [sent, received] = await Promise.all([
         prisma.message.count({
           where: {
-            conversation: { orgId: user.orgId },
+            conversation: { orgId: user.orgId, ...convScope },
             senderType: SenderType.SELF,
             sentAt: { gte: start, lte: end },
           },
         }),
         prisma.message.count({
           where: {
-            conversation: { orgId: user.orgId },
+            conversation: { orgId: user.orgId, ...convScope },
             senderType: SenderType.CONTACT,
             sentAt: { gte: start, lte: end },
           },

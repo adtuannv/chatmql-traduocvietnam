@@ -25,6 +25,8 @@ import {
   isAfterHours,
 } from './ai-config-service.js'
 import { getToolsConfig, applyToolsPatch } from './tools-config-service.js'
+import { getEffectiveConfigForTask } from './ai-config-service.js'
+import { getContextBudgets, resolveBudgetTier } from './harness/budgets.js'
 import { listPendingActions, confirmAction, rejectAction, type PendingActionStatus } from './pending-action-service.js'
 import {
   getLogicDocs,
@@ -167,6 +169,8 @@ export async function aiRoutes(app: FastifyInstance): Promise<void> {
       autoReplyEnabled?: boolean
       debounceSeconds?: number
       prefilterKeywords?: string | null
+      groupRequireMention?: boolean
+      mentionNames?: string | null
       // RAG guardrail allow-lists (empty = no limit)
       allowedProductCategoryIds?: string[]
       allowedKnowledgeCategoryIds?: string[]
@@ -256,6 +260,27 @@ export async function aiRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // ── Tools / function config (per-function enable + guardrail) ───────────────
+  // ── Ngân sách ký tự của prompt (theo model sinh trả lời của org) ────────────
+  // FE dùng để hiện bộ đếm ký tự + cảnh báo "phần vượt sẽ bị cắt" ngay trong
+  // editor persona/playbook/tài liệu logic — chấm dứt cắt ngầm không ai biết.
+  app.get('/api/v1/ai/context-budgets', async (request, reply) => {
+    try {
+      const user = request.user as { orgId: string }
+      const cfg = await getAiConfig(user.orgId)
+      // Model của task auto_reply (task sinh câu trả lời) quyết định bậc ngân sách.
+      const gen = getEffectiveConfigForTask(cfg, 'auto_reply')
+      const model = gen.model || null
+      return {
+        budgets: getContextBudgets(model),
+        tier: resolveBudgetTier(model),
+        model,
+      }
+    } catch (err: any) {
+      app.log.error({ err }, '[ai] context-budgets fetch failed')
+      return sendError(reply, err, 'Failed to fetch context budgets')
+    }
+  })
+
   app.get('/api/v1/ai/tools-config', async (request, reply) => {
     try {
       const user = request.user as { orgId: string }

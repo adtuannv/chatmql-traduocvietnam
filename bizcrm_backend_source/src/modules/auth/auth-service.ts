@@ -8,6 +8,11 @@ export interface JwtPayload {
   fullName: string
   role: string
   orgId: string
+  /**
+   * Vai trò động. Token cũ (phát trước khi có RBAC) không có trường này —
+   * lúc đó hệ thống lùi về cột `role`, nên không cần bắt đăng nhập lại.
+   */
+  roleId?: string | null
 }
 
 /** Check if first-run setup is needed */
@@ -52,6 +57,7 @@ export async function setup(
     fullName: result.user.fullName,
     role: result.user.role,
     orgId: result.org.id,
+    roleId: result.user.roleId,
   }
 }
 
@@ -79,7 +85,7 @@ export async function login(email: string, password: string): Promise<JwtPayload
   // (super admin can still enter via /platform login-as, which bypasses this.)
   assertOrgUsable(user.org)
 
-  return { id: user.id, email: user.email, fullName: user.fullName, role: user.role, orgId: user.orgId }
+  return { id: user.id, email: user.email, fullName: user.fullName, role: user.role, orgId: user.orgId, roleId: user.roleId }
 }
 
 /** Throw a 403 ORG_EXPIRED / ORG_SUSPENDED error when the org is unusable. */

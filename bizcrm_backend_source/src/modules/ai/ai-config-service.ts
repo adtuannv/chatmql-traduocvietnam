@@ -224,6 +224,8 @@ export async function updateAiConfig(
     autoReplyEnabled?: boolean
     debounceSeconds?: number
     prefilterKeywords?: string | null
+    groupRequireMention?: boolean
+    mentionNames?: string | null
     // RAG + embeddings (M3)
     ragTopK?: number
     embeddingProvider?: string | null
@@ -291,6 +293,8 @@ export async function updateAiConfig(
       autoReplyEnabled: input.autoReplyEnabled ?? false,
       debounceSeconds: input.debounceSeconds ?? 5,
       prefilterKeywords: input.prefilterKeywords ?? null,
+      groupRequireMention: input.groupRequireMention ?? true,
+      mentionNames: input.mentionNames ?? null,
       ragTopK: input.ragTopK ?? 5,
       embeddingProvider: input.embeddingProvider ?? null,
       embeddingModel: input.embeddingModel ?? null,
@@ -312,6 +316,8 @@ export async function updateAiConfig(
       ...(input.autoReplyEnabled !== undefined ? { autoReplyEnabled: input.autoReplyEnabled } : {}),
       ...(input.debounceSeconds !== undefined ? { debounceSeconds: input.debounceSeconds } : {}),
       ...(input.prefilterKeywords !== undefined ? { prefilterKeywords: input.prefilterKeywords } : {}),
+      ...(input.groupRequireMention !== undefined ? { groupRequireMention: input.groupRequireMention } : {}),
+      ...(input.mentionNames !== undefined ? { mentionNames: input.mentionNames } : {}),
       ...(input.ragTopK !== undefined ? { ragTopK: input.ragTopK } : {}),
       ...(input.embeddingProvider !== undefined ? { embeddingProvider: input.embeddingProvider } : {}),
       ...(input.embeddingModel !== undefined ? { embeddingModel: input.embeddingModel } : {}),
@@ -413,6 +419,10 @@ export type AiReplyConfig = {
   autoReplyEnabled: boolean
   debounceSeconds: number
   prefilterKeywords: string | null
+  /** Trong nhóm, chỉ trả lời khi có người nhắc tên. */
+  groupRequireMention: boolean
+  /** Tên gọi coi là "được nhắc", cách nhau bằng dấu phẩy. */
+  mentionNames: string | null
   schedule: ScheduleConfig
   // M3 fields
   ragTopK: number
@@ -464,6 +474,8 @@ async function loadAiReplyConfig(orgId: string): Promise<AiReplyConfig> {
     autoReplyEnabled: cfg.autoReplyEnabled,
     debounceSeconds: cfg.debounceSeconds,
     prefilterKeywords: cfg.prefilterKeywords ?? null,
+    groupRequireMention: cfg.groupRequireMention,
+    mentionNames: cfg.mentionNames ?? null,
     schedule,
     ragTopK: cfg.ragTopK,
     embeddingProvider: cfg.embeddingProvider ?? null,

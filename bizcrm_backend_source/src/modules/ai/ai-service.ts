@@ -23,6 +23,7 @@ export type LoggedTaskType =
   | AiTaskType | 'conversation_analysis' | 'ai_cdp'
   | 'ai_router' | 'auto_reply' | 'ai_master' // harness + Master (góp ý/cải thiện)
   | 'embedding' // vector embeds (RAG queries + KB/product backfills)
+  | 'assistant_qa' // Trợ lý AI nội bộ — hỏi đáp tự do của nhân viên, không gắn hội thoại
 export type SentimentResult = { label: 'positive' | 'neutral' | 'negative'; confidence: number; reason: string }
 export type ConversationAnalysis = { summary: string; sentiment: SentimentResult; leadScore: LeadScoreResult }
 export type LeadScoreResult = {

@@ -5,6 +5,7 @@
  * Extracted from zalo-pool.ts for modularization.
  */
 import type { API as ZaloAPI } from 'zca-js'
+import { ZALO_REACTION_TO_EMOJI } from './zalo-reactions.js'
 import { ThreadType } from 'zca-js'
 import { prisma } from '../../shared/prisma-client.js'
 import {
@@ -531,7 +532,11 @@ export function setupMessageListener(accountId: string, orgId: string, api: Zalo
 
       const rMsg = rMsgArr[0]
       const targetMsgId = String(rMsg.gMsgID || rMsg.cMsgID || '')
-      const emoji = String(rMsg.rIcon || rData.rIcon || rData.content?.rIcon || '')
+      // Zalo trả `rIcon` có khi là emoji unicode, có khi là mã nội bộ của zca-js
+      // (ví dụ '/-strong'). Đổi mã sang emoji nếu nhận ra, còn lại giữ nguyên —
+      // để nguyên mã thì bong bóng tin nhắn hiện ra chuỗi vô nghĩa.
+      const rawIcon = String(rMsg.rIcon || rData.rIcon || rData.content?.rIcon || '')
+      const emoji = ZALO_REACTION_TO_EMOJI[rawIcon] ?? rawIcon
       // rType: 1 = add, 0 = remove (undoing reaction)
       const action: 'added' | 'removed' = rMsg.rType === 0 ? 'removed' : 'added'
 
@@ -542,6 +547,18 @@ export function setupMessageListener(accountId: string, orgId: string, api: Zalo
 
       if (!targetMsgId) return
 
+      // Cảm xúc do CHÍNH tài khoản này thả (nhân viên bấm trên ChatMQL) sẽ được
+      // Zalo vọng ngược về. Bản ghi đã tồn tại với reactorId là id nhân viên;
+      // ghi thêm một bản theo UID Zalo nữa thì bong bóng hiện thành hai lượt.
+      const self = await prisma.channelAccount.findUnique({
+        where: { id: accountId },
+        select: { externalUid: true },
+      })
+      if (self?.externalUid && uidFrom === String(self.externalUid)) {
+        logger.info(`[zalo-pool] ${accountId} ← reaction: bỏ qua tiếng vọng của chính mình`)
+        return
+      }
+
       // Find the message in our DB
       const msg = await prisma.message.findFirst({
         where: { externalMsgId: targetMsgId },
@@ -550,6 +567,25 @@ export function setupMessageListener(accountId: string, orgId: string, api: Zalo
       if (!msg) {
         logger.info(`[zalo-pool] ${accountId} ← reaction: no message found for msgId=${targetMsgId}`)
         return
+      }
+
+      // Ghi DB trước khi bắn socket — nếu chỉ emit thì cảm xúc khách thả trên
+      // app Zalo sẽ biến mất ngay khi người dùng tải lại trang.
+      // Zalo có bộ icon riêng (rIcon) rộng hơn 6 emoji CRM hỗ trợ → lưu nguyên
+      // giá trị nhận được, không validate, để không nuốt mất cảm xúc của khách.
+      try {
+        if (action === 'added' && emoji) {
+          await prisma.messageReaction.upsert({
+            where: { messageId_reactorId: { messageId: msg.id, reactorId: uidFrom } },
+            create: { messageId: msg.id, reactorId: uidFrom, emoji },
+            update: { emoji },
+          })
+        } else {
+          await prisma.messageReaction.deleteMany({ where: { messageId: msg.id, reactorId: uidFrom } })
+        }
+      } catch (dbErr: any) {
+        // Lỗi DB không được làm chết listener — cảm xúc vẫn hiện realtime.
+        logger.error(`[zalo-pool] ${accountId} reaction persist error:`, dbErr?.message || dbErr)
       }
 
       // Emit to frontend for real-time reaction sync
@@ -719,15 +755,17 @@ export function setupMessageListener(accountId: string, orgId: string, api: Zalo
         })
 
         // Enrich existing contact or create new one
+        let acceptedContactId: string | null = null
         try {
           const existing = await prisma.contact.findFirst({
             where: { zaloUid: friendId, orgId: account.orgId },
             select: { id: true },
           })
           if (existing) {
+            acceptedContactId = existing.id
             enrichContactFromZalo(accountId, friendId, existing.id).catch(() => {})
           } else {
-            await prisma.contact.create({
+            const created = await prisma.contact.create({
               data: {
                 orgId: account.orgId,
                 zaloUid: friendId,
@@ -737,8 +775,33 @@ export function setupMessageListener(accountId: string, orgId: string, api: Zalo
                 source: 'Zalo',
               },
             })
+            acceptedContactId = created.id
           }
         } catch { /* ignore */ }
+
+        // Ghi sự kiện 'friend_added' — thời điểm kết bạn CHÍNH XÁC duy nhất có được
+        // (zca-js.getAllFriends() khi đồng bộ hàng loạt không trả thời điểm kết
+        // bạn thật, chỉ ID/tên; toàn bộ danh bạ được ghi cùng một created_at =
+        // lúc đồng bộ). Báo cáo Chat → Đơn hiện dùng TỔNG danh bạ (không theo
+        // kỳ) nên chưa đọc sự kiện này — giữ lại làm nguồn cho dòng thời gian
+        // liên hệ / các báo cáo "liên hệ mới theo kỳ" sau này, khi đã tích lũy
+        // đủ dữ liệu thật kể từ đây.
+        if (acceptedContactId) {
+          try {
+            await prisma.cdpEvent.create({
+              data: {
+                orgId: account.orgId,
+                contactId: acceptedContactId,
+                eventName: 'friend_added',
+                properties: { channelAccountId: accountId, friendUid: friendId },
+                source: 'chatmql',
+                timestamp: new Date(),
+              },
+            })
+          } catch (err: any) {
+            logger.warn(`[zalo-pool] không ghi được sự kiện friend_added: ${err.message}`)
+          }
+        }
         return
       }
 

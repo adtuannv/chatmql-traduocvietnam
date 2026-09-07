@@ -12,6 +12,7 @@ import { noteRoutes } from './modules/contacts/note-routes.js'
 import { taskRoutes } from './modules/tasks/task-routes.js'
 import { dashboardRoutes } from './modules/dashboard/dashboard-routes.js'
 import { activityRoutes } from './modules/dashboard/activity-routes.js'
+import { reportRoutes } from './modules/dashboard/report-routes.js'
 import { chatRoutes } from './modules/chat/chat-routes.js'
 import { webChatRoutes } from './modules/chat/web-chat-routes.js'
 import { zaloRoutes } from './modules/zalo/zalo-routes.js'
@@ -22,6 +23,9 @@ import { searchRoutes } from './modules/search/search-routes.js'
 import { initSocketGateway } from './modules/realtime/socket-gateway.js'
 import { profileRoutes } from './modules/auth/profile-routes.js'
 import { aiRoutes } from './modules/ai/ai-routes.js'
+import { assistantRoutes } from './modules/ai/assistant-routes.js'
+import { aiBotRoutes } from './modules/ai/ai-bot-routes.js'
+import { aiEvalRoutes } from './modules/ai/ai-eval-routes.js'
 import { masterRoutes } from './modules/ai/master-routes.js'
 import { knowledgeGapRoutes } from './modules/ai/knowledge-gap-routes.js'
 import { scenarioRoutes } from './modules/ai/scenario-routes.js'
@@ -82,9 +86,14 @@ import { platformEnterCompanyRoutes } from './modules/platform/enter-company-rou
 import { platformReportRoutes } from './modules/platform/report-routes.js'
 import { platformBrandingRoutes } from './modules/platform/platform-branding-routes.js'
 import { productRoutes, PRODUCT_UPLOADS_DIR } from './modules/products/product-routes.js'
+import { crmProductRoutes } from './modules/crm-products/crm-products-routes.js'
+import { productDocRoutes } from './modules/product-docs/product-docs-routes.js'
+import { docLibraryRoutes, DOC_ASSETS_DIR } from './modules/doc-library/doc-library-routes.js'
 import { crmSyncRoutes } from './modules/integrations/crm-sync/crm-sync-routes.js'
 import { orderRoutes } from './modules/orders/order-routes.js'
 import { promotionAdminRoutes } from './modules/orders/promotion-admin-routes.js'
+import { syncRbac } from './modules/settings/rbac-seed.js'
+import { roleRoutes } from './modules/settings/role-routes.js'
 import { CHAT_MEDIA_DIR } from './modules/chat/chat-media-store.js'
 import { embedAndStoreProduct } from './modules/products/product-embedding.js'
 
@@ -176,6 +185,9 @@ app.get<{ Params: { code: string } }>('/zalo_verifier:code.html', async (request
 // ── Public static files (avatars, etc.) — NO auth required ──────────
 import fastifyStatic from '@fastify/static'
 import { UPLOADS_DIR } from './modules/auth/profile-routes.js'
+import { widgetScriptRoutes } from './modules/widget/widget-script.js'
+import { widgetPublicRoutes } from './modules/widget/widget-public-routes.js'
+import { widgetAdminRoutes, WIDGET_LOGO_DIR } from './modules/widget/widget-admin-routes.js'
 await app.register(fastifyStatic, {
   root: UPLOADS_DIR,
   prefix: '/uploads/avatars/',
@@ -187,9 +199,25 @@ await app.register(fastifyStatic, {
   decorateReply: false,
 })
 await app.register(fastifyStatic, {
+  root: DOC_ASSETS_DIR,
+  prefix: '/uploads/doc-assets/',
+  decorateReply: false,
+})
+await app.register(fastifyStatic, {
   root: CHAT_MEDIA_DIR,
   prefix: '/uploads/chat-media/',
   decorateReply: false,
+})
+await app.register(fastifyStatic, {
+  root: WIDGET_LOGO_DIR,
+  prefix: '/uploads/widget-logos/',
+  decorateReply: false,
+  // Logo hiện trên website của KHÁCH. helmet mặc định `same-origin` sẽ chặn
+  // ảnh này y như đã chặn widget.js — phải mở chéo miền thì logo mới lên.
+  setHeaders: (res) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  },
 })
 
 // ── Public Media Proxy (no auth needed for img tags) ─────────────────
@@ -232,16 +260,21 @@ await app.register(appointmentRoutes)
 await app.register(noteRoutes)
 await app.register(taskRoutes)
 await app.register(dashboardRoutes)
+await app.register(reportRoutes)
 await app.register(activityRoutes)
 await app.register(chatRoutes)
 await app.register(webChatRoutes)
 await app.register(zaloRoutes)
 await app.register(automationRoutes)
 await app.register(settingsRoutes)
+await app.register(roleRoutes) // RBAC: /me/permissions, /permissions, /roles
 await app.register(notificationRoutes)
 await app.register(searchRoutes)
 await app.register(profileRoutes)
 await app.register(aiRoutes)
+await app.register(assistantRoutes)
+await app.register(aiBotRoutes)
+await app.register(aiEvalRoutes) // bộ câu hỏi vàng — kiểm định hồi quy cho AI
 await app.register(masterRoutes)
 await app.register(knowledgeGapRoutes)
 await app.register(scenarioRoutes)
@@ -287,11 +320,21 @@ await app.register(platformBrandingRoutes)
 
 // ── Product Knowledge Base ───────────────────────────────────────────
 await app.register(productRoutes)
+await app.register(crmProductRoutes)  // /crm-products — đọc sản phẩm thẳng từ CRM
+await app.register(productDocRoutes)  // /product-docs — tài liệu bán hàng theo mã SP
+await app.register(docLibraryRoutes)  // /doc-library — thư viện thư mục + tài nguyên
 
 // ── CRM & FM Integrations + Order Dispatch ───────────────────────────
 await app.register(crmSyncRoutes)
 await app.register(orderRoutes)
 await app.register(promotionAdminRoutes)
+// Widget live chat cho website: script + API công khai (không JWT) + quản trị.
+await app.register(widgetScriptRoutes)   // GET /widget.js — công khai
+await app.register(widgetPublicRoutes)   // /widget/:siteKey/* — công khai, chặn theo tên miền
+await app.register(widgetAdminRoutes)    // /widgets — JWT + quyền integrations.*
+
+// RBAC: đồng bộ danh mục quyền + 4 vai trò gốc (idempotent, lỗi không chặn boot).
+await syncRbac()
 
 // Error handler
 app.setErrorHandler((error: Error & { statusCode?: number; code?: string }, _request, reply) => {

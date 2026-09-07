@@ -3,6 +3,7 @@
  * Ported from ZaloCRM integration-routes.ts + app settings.
  */
 import type { FastifyInstance } from 'fastify'
+import { invalidateUserRoleCache } from '../../shared/permission-service.js'
 import { randomBytes } from 'node:crypto'
 import { authMiddleware } from '../auth/auth-middleware.js'
 import { prisma } from '../../shared/prisma-client.js'
@@ -179,7 +180,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     const rows = await prisma.user.findMany({
       where: { orgId: user.orgId },
       select: {
-        id: true, fullName: true, email: true, role: true, isActive: true, createdAt: true, avatarUrl: true,
+        id: true, fullName: true, email: true, role: true, roleId: true, isActive: true, createdAt: true, avatarUrl: true,
+        roleRef: { select: { id: true, name: true, dataScope: true } },
         managers: { select: { managerId: true } },
         managedMembers: { select: { memberId: true } },
       },
@@ -190,6 +192,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       fullName: r.fullName,
       email: r.email,
       role: r.role,
+      roleId: r.roleId,
+      roleName: r.roleRef?.name ?? null,
       avatarUrl: r.avatarUrl,
       status: r.isActive ? 'active' : 'inactive',
       createdAt: r.createdAt,
@@ -229,6 +233,13 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       const bcrypt = await import('bcryptjs')
       const passwordHash = await bcrypt.hash(tempPlain, 10)
 
+      // Nối luôn vai trò động HỆ THỐNG tương ứng — không nối thì user mới rơi
+      // về bộ quyền mặc định trong code, mọi chỉnh sửa trên ma trận bị bỏ qua.
+      const sysRole = await prisma.role.findFirst({
+        where: { orgId: user.orgId, isSystem: true, systemKey: role },
+        select: { id: true },
+      })
+
       const created = await prisma.user.create({
         data: {
           orgId: user.orgId,
@@ -236,6 +247,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           fullName: fullName?.trim() || email.split('@')[0],
           passwordHash,
           role,
+          roleId: sysRole?.id ?? null,
           isActive: true,
         },
         select: { id: true, fullName: true, email: true, role: true, isActive: true, createdAt: true },
@@ -255,7 +267,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch<{
     Params: { id: string }
-    Body: { role?: string; fullName?: string; password?: string; isActive?: boolean }
+    Body: { role?: string; fullName?: string; password?: string; isActive?: boolean; roleId?: string | null }
   }>(
     '/api/v1/settings/team/:id',
     async (request, reply) => {
@@ -267,7 +279,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       const target = await prisma.user.findFirst({ where: { id: request.params.id, orgId: user.orgId } })
       if (!target) return reply.status(404).send({ error: 'User not found' })
 
-      const { role, fullName, password, isActive } = request.body
+      const { role, fullName, password, isActive, roleId } = request.body
 
       // Owner is protected from demotion, deactivation, and password reset by
       // an admin. The owner changes their own password via /auth/change-password.
@@ -277,8 +289,27 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         if (password) return reply.status(400).send({ error: 'Owner password must be changed via Account Security' })
       }
 
-      const data: { role?: string; fullName?: string; passwordHash?: string; isActive?: boolean } = {}
+      const data: {
+        role?: string; fullName?: string; passwordHash?: string; isActive?: boolean; roleId?: string | null
+      } = {}
       if (role !== undefined) data.role = role
+
+      // Gán vai trò động. Chỉ nhận vai trò thuộc chính tổ chức này — nếu không
+      // một id đoán được sẽ kéo quyền từ tổ chức khác sang.
+      if (roleId !== undefined) {
+        if (roleId === null) {
+          data.roleId = null
+        } else {
+          const targetRole = await prisma.role.findFirst({
+            where: { id: roleId, orgId: user.orgId }, select: { id: true, systemKey: true },
+          })
+          if (!targetRole) return reply.status(400).send({ error: 'Vai trò không tồn tại trong tổ chức' })
+          if (target.role === 'owner' && targetRole.systemKey !== 'owner') {
+            return reply.status(400).send({ error: 'Không thể đổi vai trò của chủ sở hữu' })
+          }
+          data.roleId = targetRole.id
+        }
+      }
       if (fullName !== undefined && fullName.trim()) data.fullName = fullName.trim()
       if (isActive !== undefined) data.isActive = isActive
       if (password !== undefined && password.length > 0) {
@@ -292,6 +323,9 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         data,
         select: { id: true, fullName: true, email: true, role: true, isActive: true, createdAt: true },
       })
+      // Đổi vai trò có hiệu lực NGAY với người đang đăng nhập — không bắt đăng
+      // nhập lại (cache quyền theo userId trong permission-service).
+      if (roleId !== undefined || role !== undefined) invalidateUserRoleCache(updated.id)
       return {
         id: updated.id,
         fullName: updated.fullName,

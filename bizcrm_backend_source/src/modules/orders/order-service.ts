@@ -16,6 +16,7 @@
 import { randomUUID, createHash } from 'crypto'
 import { prisma } from '../../shared/prisma-client.js'
 import { logger } from '../../shared/logger.js'
+import { buildOrderBill, loadCompanyInfo } from './order-bill.js'
 import {
   createOrderOnCrm,
   CrmApiError,
@@ -78,6 +79,13 @@ export interface CreateOrderInput {
    * bấm lại, để timeout rồi thử lại không đẻ ra đơn thứ hai.
    */
   requestId?: string
+  /**
+   * Nguồn chốt đơn cho báo cáo Chat → Đơn: 'ai' khi đơn xuất phát từ nháp AI
+   * (pending action create_order được xác nhận), 'staff' cho mọi ca còn lại.
+   * KHÔNG để trình duyệt tự khai — route /orders/create tự xác minh
+   * aiPendingActionId với bảng AiPendingAction rồi mới đặt cờ này.
+   */
+  source?: 'ai' | 'staff'
 }
 
 export interface CreateOrderResult extends CrmCreateOrderResult {
@@ -131,39 +139,39 @@ function cleanCustomerName(name: string, phone: string): string {
  * ra màn hình, nên `**đậm**` hiện nguyên cả hai dấu sao — khách nhìn thấy y hệt
  * nhân viên. Muốn nhấn mạnh thì dùng chữ HOA và ký tự phân cách.
  */
-function buildOrderCard(result: CrmCreateOrderResult, input: CreateOrderInput): string {
-  const name = cleanCustomerName(input.customerName || '', input.customerPhone || '')
-  const itemList = input.items
-    .map(i => `• ${i.productName} × ${i.quantity}${i.isGift ? ' (quà tặng)' : ''}`)
-    .join('\n')
-  const payLabel = input.paymentMethod === 'vietqr'
-    ? 'Chuyển khoản VietQR'
-    : 'Thanh toán khi nhận hàng (COD)'
-
-  const lines = [
-    `🛍️ ĐƠN HÀNG MỚI — ${result.order_code}`,
-    '━━━━━━━━━━━━━━━━━━━━',
-    `👤 Người nhận: ${name}`,
-    `📞 Điện thoại: ${input.customerPhone}`,
-    `📍 Địa chỉ: ${input.shippingAddress}`,
-    '',
-    '📦 Sản phẩm:',
-    itemList,
-    '',
-    `💰 Tổng thanh toán: ${formatVnd(result.total_amount)}`,
-    `🚚 Hình thức: ${payLabel}`,
-  ]
-
-  if (input.notes?.trim()) lines.push(`📝 Ghi chú: ${input.notes.trim()}`)
-
-  lines.push('━━━━━━━━━━━━━━━━━━━━')
-  lines.push('✅ Lên đơn thành công!')
-
-  if (result.vietqr_url) {
-    lines.push('', '💳 Quét mã QR để chuyển khoản:', result.vietqr_url)
-  }
-
-  return lines.join('\n')
+/**
+ * Tin xác nhận đơn gửi khách — bố cục phiếu bán hàng, xem order-bill.ts.
+ * Tiền lấy từ kết quả CRM trả về (nguồn sự thật), không tự tính lại ở đây.
+ */
+async function buildOrderCard(
+  result: CrmCreateOrderResult,
+  input: CreateOrderInput,
+): Promise<string> {
+  const company = await loadCompanyInfo(input.orgId)
+  return buildOrderBill(
+    {
+      orderCode: result.order_code,
+      customerName: cleanCustomerName(input.customerName || '', input.customerPhone || ''),
+      customerPhone: input.customerPhone || '',
+      shippingAddress: input.shippingAddress || '',
+      sellerName: input.sellerName,
+      items: input.items.map((i) => ({
+        productName: i.productName,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        isGift: i.isGift,
+      })),
+      subtotal: result.subtotal,
+      discountAmount: result.discount_amount,
+      shippingFee: result.shipping_fee,
+      totalAmount: result.total_amount,
+      depositAmount: input.depositAmount,
+      paymentMethod: result.payment_method || input.paymentMethod,
+      notes: input.notes,
+      vietqrUrl: result.vietqr_url,
+    },
+    company,
+  )
 }
 
 /**
@@ -227,6 +235,60 @@ export async function createOrderAndSync(input: CreateOrderInput): Promise<Creat
     return { ...result, contactUpdated: false, chatMessageCreated: false }
   }
 
+  // ── 1b. Ghi sự kiện 'order_created' cho báo cáo Chat → Đơn ─────────
+  // ChatMQL không có bảng đơn hàng local (đơn nằm ở CRM), nên báo cáo
+  // /api/v1/reports/chat-to-order đếm đơn/doanh số từ cdp_events. Chỉ ghi khi
+  // CRM đã thực sự nhận đơn (đến được đây là thành công) và KHÔNG replayed.
+  // CdpEvent.contactId là FK bắt buộc → thiếu contactId thì tra theo số điện
+  // thoại trong org; vẫn không có contact thì đành bỏ qua event (ghi warn),
+  // không thể fabricate contact. Hỏng ở đây KHÔNG làm hỏng đơn.
+  try {
+    let eventContactId = input.contactId ?? null
+    if (!eventContactId && input.customerPhone?.trim()) {
+      const byPhone = await prisma.contact.findFirst({
+        where: { orgId: input.orgId, phone: input.customerPhone.trim(), deletedAt: null },
+        select: { id: true },
+      })
+      eventContactId = byPhone?.id ?? null
+    }
+    // Kênh của đơn — để báo cáo lọc được theo kênh/tài khoản tương tác.
+    // Không có hội thoại (lên đơn ngoài chat) thì để trống, báo cáo lọc theo
+    // kênh sẽ không tính đơn này (đúng: không biết nó thuộc kênh nào).
+    let eventChannelAccountId: string | null = null
+    if (input.conversationId) {
+      const cvChan = await prisma.conversation.findUnique({
+        where: { id: input.conversationId },
+        select: { channelAccountId: true },
+      })
+      eventChannelAccountId = cvChan?.channelAccountId ?? null
+    }
+    if (eventContactId) {
+      await prisma.cdpEvent.create({
+        data: {
+          orgId: input.orgId,
+          contactId: eventContactId,
+          eventName: 'order_created',
+          properties: {
+            orderCode: result.order_code,
+            total: result.total_amount, // VND nguyên
+            source: input.source ?? 'staff',
+            ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+            ...(eventChannelAccountId ? { channelAccountId: eventChannelAccountId } : {}),
+          },
+          source: 'chatmql',
+          timestamp: new Date(),
+        },
+      })
+    } else {
+      logger.warn(
+        { orderCode: result.order_code, orgId: input.orgId },
+        '[orders] Không tìm được contact — bỏ qua event order_created (báo cáo Chat → Đơn sẽ thiếu đơn này)',
+      )
+    }
+  } catch (err) {
+    logger.error({ err, orderCode: result.order_code }, '[orders] Ghi event order_created thất bại')
+  }
+
   // ── 2. Việc riêng của ChatMQL — hỏng ở đây KHÔNG làm hỏng đơn ──────
   let contactUpdated = false
   if (input.contactId) {
@@ -286,7 +348,7 @@ export async function createOrderAndSync(input: CreateOrderInput): Promise<Creat
           senderName: input.sellerName || 'Staff',
           repliedByUserId: input.createdUserId || null,
           contentType: 'text',
-          content: buildOrderCard(result, input),
+          content: await buildOrderCard(result, input),
           sentAt: new Date(),
         },
       })

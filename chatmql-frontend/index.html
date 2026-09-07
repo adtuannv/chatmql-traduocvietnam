@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trà Dược Việt Nam — Quản lý khách hàng</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      // Branding động — nạp trước khi app render để đặt title/màu/logo.
+      // Production dùng CÙNG origin (nginx proxy /api → backend); chỉ localhost mới gọi cổng 4520.
+      (function () {
+        var search = window.location.search || ''
+        var host = window.location.hostname
+        var apiBase = host === 'localhost' || host === '127.0.0.1' ? 'http://localhost:4520' : ''
+        window.__API_BASE__ = apiBase
+        try {
+          fetch(apiBase + '/api/v1/platform/branding' + search)
+            .then(function (r) { return r.json() })
+            .then(function (data) {
+              window.__CHATMQL_BRANDING__ = data
+              if (data.brandName) {
+                document.title =
+                  data.brandName + (data.tagline ? ' — ' + data.tagline : ' — Quản lý khách hàng')
+              }
+              if (data.primaryColor) {
+                document.documentElement.style.setProperty('--brand-color', data.primaryColor)
+              }
+              if (data.logoUrl) {
+                var favicon = document.querySelector('link[rel="icon"]')
+                if (favicon && /favicon/i.test(data.logoUrl)) favicon.href = data.logoUrl
+              }
+            })
+            .catch(function () {})
+        } catch (e) {}
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

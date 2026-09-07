@@ -164,13 +164,15 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const [unread, unreplied, total] = await Promise.all([
+    const [unread, unreplied, ai, total] = await Promise.all([
       prisma.conversation.count({ where: { ...baseWhere, unreadCount: { gt: 0 } } }),
       prisma.conversation.count({ where: { ...baseWhere, isReplied: false } }),
+      // "AI tư vấn": hội thoại đang để AI tự trả lời (aiMode = auto) — badge cho bộ lọc bên trái.
+      prisma.conversation.count({ where: { ...baseWhere, aiMode: 'auto' } }),
       prisma.conversation.count({ where: baseWhere }),
     ])
 
-    return { unread, unreplied, total }
+    return { unread, unreplied, ai, total }
   })
 
   // ── List conversations (paginated, filterable) ──────────────────────
@@ -402,6 +404,126 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
     const messages = rawMessages.map(transformMessageForFrontend)
     return { messages: messages.reverse(), total, page: pageNum, limit: limitNum }
+  })
+
+  // ── Thả / gỡ cảm xúc cho một tin nhắn ───────────────────────────────
+  // DB là nguồn sự thật: ghi xong rồi mới đẩy sang Zalo. Zalo hỏng (mất kết
+  // nối, hết hạn mức, tin không có externalMsgId) cũng KHÔNG làm hỏng request —
+  // nhân viên vẫn thấy cảm xúc trong CRM, lý do trả về qua `reason`.
+  app.post<{
+    Params: { id: string; msgId: string }
+    Body: { icon?: string; emoji?: string }
+  }>('/api/v1/conversations/:id/messages/:msgId/reaction', { preHandler: requireZaloAccess() }, async (request, reply) => {
+    const user = request.user as { orgId: string; id: string }
+    const { id, msgId } = request.params
+    // Giao diện gửi `icon`; nhận thêm `emoji` để client cũ vẫn chạy được.
+    const rawEmoji = request.body?.icon ?? request.body?.emoji ?? ''
+    const emoji = typeof rawEmoji === 'string' ? rawEmoji.trim() : ''
+
+    const conv = await prisma.conversation.findFirst({
+      where: { id, orgId: user.orgId },
+      select: {
+        id: true,
+        channelAccountId: true,
+        externalThreadId: true,
+        threadType: true,
+        channelAccount: { select: { platform: true } },
+      },
+    })
+    if (!conv) return reply.status(404).send({ error: 'Không tìm thấy hội thoại' })
+
+    const message = await prisma.message.findFirst({
+      where: { id: msgId, conversationId: conv.id },
+      select: { id: true, externalMsgId: true },
+    })
+    if (!message) return reply.status(404).send({ error: 'Không tìm thấy tin nhắn trong hội thoại này' })
+
+    // Chuỗi rỗng = gỡ cảm xúc, nên chỉ kiểm tra khi có emoji.
+    if (emoji !== '' && !isSupportedEmoji(emoji)) {
+      return reply.status(400).send({ error: 'Zalo chỉ hỗ trợ các cảm xúc: 👍 ❤️ 😂 😮 😢 😡' })
+    }
+
+    // Cột `reactorId` vốn để lưu UID Zalo, nhưng cảm xúc thả từ CRM không có
+    // UID Zalo tương ứng — dùng id nhân viên để vẫn giữ ràng buộc 1 người/1 tin.
+    const reactorId = user.id
+    const action: 'added' | 'removed' = emoji === '' ? 'removed' : 'added'
+
+    if (action === 'added') {
+      await prisma.messageReaction.upsert({
+        where: { messageId_reactorId: { messageId: message.id, reactorId } },
+        create: { messageId: message.id, reactorId, emoji },
+        update: { emoji },
+      })
+    } else {
+      // deleteMany: gỡ khi chưa từng thả cũng không được coi là lỗi.
+      await prisma.messageReaction.deleteMany({ where: { messageId: message.id, reactorId } })
+    }
+
+    try {
+      emitReaction(conv.id, message.id, emoji, action)
+    } catch { /* socket not ready */ }
+
+    // Chỉ Zalo cá nhân mới có API addReaction. Kênh khác vẫn ghi DB + bắn socket
+    // để cảm xúc hiện trong CRM, chỉ bỏ bước đồng bộ ra ngoài.
+    const forward = conv.channelAccount?.platform === Platform.ZALO_USER
+      ? await forwardReactionToZalo({
+          accountId: conv.channelAccountId,
+          threadId: conv.externalThreadId ?? '',
+          threadType: conv.threadType === 'group' ? 'group' : 'user',
+          externalMsgId: message.externalMsgId ?? '',
+          emoji,
+        })
+      : { forwarded: false, reason: 'kênh không hỗ trợ cảm xúc' }
+
+    const reason = forward.forwarded ? undefined : (forward.reason ?? forward.error)
+    if (!forward.forwarded) {
+      logger.warn({ convId: conv.id, messageId: message.id, reason }, '[chat] cảm xúc chưa đẩy được sang Zalo')
+    }
+
+    return { ok: true, action, forwarded: forward.forwarded, ...(reason ? { reason } : {}) }
+  })
+
+  /**
+   * Ghi đè luật "chỉ trả lời khi nhắc tên" cho riêng một hội thoại.
+   *
+   * `null` = trả về theo cài đặt chung của tổ chức. Người trực một nhóm biết rõ
+   * nhóm đó cần gì hơn là một công tắc áp cho toàn tổ chức, nên giá trị đặt ở
+   * đây thắng cài đặt chung.
+   */
+  app.patch<{
+    Params: { id: string }
+    Body: { requireMention: boolean | null }
+  }>('/api/v1/conversations/:id/require-mention', async (request, reply) => {
+    const user = request.user as { orgId: string; id: string }
+    const gia_tri = request.body?.requireMention
+    if (gia_tri !== null && typeof gia_tri !== 'boolean') {
+      return reply.status(400).send({ error: 'requireMention phải là true, false hoặc null' })
+    }
+
+    const conv = await prisma.conversation.findFirst({
+      where: { id: request.params.id, orgId: user.orgId },
+      select: { id: true, requireMention: true },
+    })
+    if (!conv) return reply.status(404).send({ error: 'Conversation not found' })
+
+    const updated = await prisma.conversation.update({
+      where: { id: conv.id },
+      data: { requireMention: gia_tri },
+      select: { id: true, requireMention: true },
+    })
+
+    prisma.activityLog.create({
+      data: {
+        orgId: user.orgId,
+        userId: user.id,
+        action: 'conversation.require_mention_changed',
+        entityType: 'Conversation',
+        entityId: conv.id,
+        details: { from: conv.requireMention, to: gia_tri, by: user.id },
+      },
+    }).catch(err => logger.error({ err }, '[chat] activityLog create failed'))
+
+    return { convId: updated.id, requireMention: updated.requireMention }
   })
 
   // ── AI mode toggle ──────────────────────────────────────────────

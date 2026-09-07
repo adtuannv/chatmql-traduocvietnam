@@ -100,7 +100,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
-          id: true, email: true, fullName: true, role: true, orgId: true, isActive: true,
+          id: true, email: true, fullName: true, role: true, roleId: true, orgId: true, isActive: true,
           org: { select: { status: true, expiresAt: true } },
         },
       })
@@ -126,6 +126,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
+        // roleId theo DB tại thời điểm refresh — vai trò động vừa gán có mặt
+        // trong token mới mà không phải đăng nhập lại.
+        roleId: user.roleId ?? null,
         orgId: user.orgId,
       }
       const accessToken = app.jwt.sign(payload, { expiresIn: ACCESS_TOKEN_EXPIRY })
