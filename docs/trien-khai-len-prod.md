@@ -48,7 +48,19 @@ Toàn bộ là **thêm mới**, không xoá và không đổi kiểu cột nào,
 Cột thêm vào bảng đã có — tất cả đều cho phép rỗng hoặc có giá trị mặc định:
 
 | Bảng | Cột | Ghi chú |
-|### 1.3. nginx phải để `location ^~ /uploads/`
+|---|---|---|
+| `ai_configs` | `group_require_mention` | mặc định `true` — ĐỔI HÀNH VI, xem mục 2.1 |
+| `ai_configs` | `mention_names` | rỗng |
+| `conversations` | `require_mention` | rỗng = theo cài đặt chung |
+| `product_docs` | `mini_app_id` | rỗng |
+| `products` | `video_urls` | mảng rỗng |
+| `users` | `role_id` | rỗng |
+
+Bảng thêm mới: `website_widgets`, `permissions`, `roles`, `role_permissions`,
+`ai_bots`, `ai_eval_cases`, `ai_eval_runs`, `ai_eval_results`, `product_docs`,
+`doc_folders`, `doc_assets`.
+
+### 1.3. nginx phải để `location ^~ /uploads/`
 
 Kiểm tra nhanh trên máy chủ đang chạy:
 
@@ -74,18 +86,6 @@ location ^~ /uploads/ {
 ```
 
 Sửa xong chạy `nginx -t` rồi `systemctl reload nginx`.
-
----|---|---|
-| `ai_configs` | `group_require_mention` | mặc định `true` — ĐỔI HÀNH VI, xem mục 2.1 |
-| `ai_configs` | `mention_names` | rỗng |
-| `conversations` | `require_mention` | rỗng = theo cài đặt chung |
-| `product_docs` | `mini_app_id` | rỗng |
-| `products` | `video_urls` | mảng rỗng |
-| `users` | `role_id` | rỗng |
-
-Bảng thêm mới: `website_widgets`, `permissions`, `roles`, `role_permissions`,
-`ai_bots`, `ai_eval_cases`, `ai_eval_runs`, `ai_eval_results`, `product_docs`,
-`doc_folders`, `doc_assets`.
 
 ---
 
