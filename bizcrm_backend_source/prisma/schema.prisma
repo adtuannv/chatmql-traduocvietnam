@@ -257,6 +257,14 @@ model ChannelAccount {
   platform        Int       @default(2) // 1=ZALO_OA, 2=ZALO_USER (see constants.ts Platform)
   externalUid     String?   @unique @map("external_uid") // Platform-specific user ID
   externalPageId  String?   @map("external_page_id") // Page/OA ID (distinct from user ID)
+  /// Tài khoản Zalo Business và hạng của nó.
+  ///
+  /// Nhánh này KHÔNG dùng hai cột này — chúng thuộc một tính năng có sẵn trên
+  /// bản thật. Khai báo ở đây vì `prisma db push` xoá mọi cột không có trong
+  /// lược đồ: bỏ trống là mất dấu 7 tài khoản đang ở hạng `pro`, mà mất rồi
+  /// thì không dựng lại được từ đâu.
+  isBusiness      Boolean   @default(false) @map("is_business")
+  businessTier    String?   @map("business_tier")
   displayName     String?   @map("display_name")
   avatarUrl       String?   @map("avatar_url")
   phone           String?

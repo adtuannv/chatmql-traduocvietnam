@@ -1,269 +1,163 @@
-# Hướng dẫn deploy ChatMQL lên máy chủ
+# Deploy ChatMQL lên máy chủ
 
-Làm theo thứ tự từ trên xuống. Mỗi giai đoạn có bước kiểm tra — **kiểm tra không
-đạt thì dừng lại**, đừng chạy tiếp, vì bước sau dựa trên bước trước.
+Viết lại sau lần deploy thật ngày 08/09/2026. Bản trước đoán sai kiến trúc
+(tưởng chạy `git pull` + `pm2 restart`), nên đừng dùng lại bản đó.
 
-Máy chủ: `160.191.160.53`, cổng SSH `2299`.
+## Kiến trúc thật
 
-Toàn bộ quá trình mất khoảng 15–20 phút. Trong lúc khởi động lại backend thì tin
-nhắn đến sẽ gián đoạn chừng 10–30 giây, nên chọn lúc ít khách.
+| Thành phần | Thực tế |
+|---|---|
+| Backend | Container Docker **`bizcrm2_api`**, ảnh `bizcrm-backend:full` |
+| Nguồn mã backend | `/www/wwwroot/bizcrm_backend_source` — **không phải repo git**, chép tay lên |
+| Frontend | Tệp tĩnh ở `/www/wwwroot/crm_biz/frontend/dist`, build ở máy dev rồi chép lên |
+| Cơ sở dữ liệu | PostgreSQL **18** trên host, database `tra_crm` |
+| Redis | Container `bizcrm2_redis` |
+| Mạng Docker | `tra-crm_default` |
+| Volume ảnh | `bizcrm2_uploads` → `/app/uploads` trong container |
+| SSH | `root@160.191.160.53` **cổng 22** (từng là 2299) |
 
----
+**Không có `docker-compose`.** Container tạo bằng `docker run` thủ công, nên muốn
+dựng lại phải tự dựng lệnh — mục 3 bên dưới có sẵn.
 
-## Giai đoạn 0 — Xem hiện trạng (chỉ đọc, không sửa gì)
-
-Cần biết mã nguồn nằm ở đâu và backend chạy bằng gì. Đừng đoán.
-
-```bash
-ssh -p 2299 root@160.191.160.53
-```
-
-**Tìm thư mục mã nguồn:**
-
-```bash
-ls -d /www/wwwroot/*/ 2>/dev/null; find / -maxdepth 4 -name "bizcrm_backend_source" -type d 2>/dev/null
-```
-
-**Xem backend đang chạy bằng gì:**
-
-```bash
-pm2 list 2>/dev/null; systemctl list-units --type=service --state=running | grep -iE "chatmql|bizcrm|node"
-```
-
-Ghi lại **tên tiến trình** (pm2) hoặc **tên service** (systemd) — bước khởi động
-lại cần đúng tên này.
-
-**Xem đang ở commit nào** — số này là đường lui của anh, chép ra chỗ nào đó:
-
-```bash
-cd <thư-mục-mã-nguồn> && git log --oneline -1 && git status --short | head
-```
-
-Nếu `git status` có tệp bị sửa tay trên máy chủ thì **dừng lại** và xem kỹ —
-kéo mã mới sẽ đè lên chúng.
+Máy chủ này còn chạy ~37 site khác của công ty (CRM, FM, HRM, hoá đơn, portal,
+mini app). Mọi thao tác phải nhắm đúng container `bizcrm2_api`.
 
 ---
 
-## Giai đoạn 1 — Sao lưu
+## ⚠️ Điều nguy hiểm nhất: container tự đổi lược đồ khi khởi động
 
-Bước này không được bỏ. Giai đoạn 3 có thao tác đổi cấu trúc cơ sở dữ liệu.
+`docker-entrypoint.sh` chạy **`prisma db push --accept-data-loss`** mỗi lần
+container lên. Nghĩa là **khởi động lại container là tự động đổi cơ sở dữ liệu
+thật**, kể cả xoá cột và xoá bảng, không hỏi ai.
+
+Lần deploy 08/09 nếu không soi trước thì đã mất:
+
+- Hai cột `channel_accounts.is_business` và `business_tier` — **7 tài khoản đang
+  ở hạng `pro`**. Chúng thuộc một tính năng có trên bản thật mà nhánh mình không
+  có, nên Prisma coi là thừa. Đã sửa bằng cách khai báo chúng vào `schema.prisma`.
+- Ba bảng sao lưu vừa tạo trước đó — Prisma xoá **mọi bảng không có trong lược
+  đồ**, kể cả bảng mình cố ý tạo để phòng thân.
+
+**Nên: sao lưu bằng `pg_dump` ra tệp, đừng sao lưu bằng cách tạo bảng mới.**
+
+Bắt buộc chạy trước mỗi lần deploy — nó in ra đúng SQL sẽ được áp:
 
 ```bash
-cd <thư-mục-mã-nguồn>/bizcrm_backend_source
-source .env 2>/dev/null || export $(grep -E "^DATABASE_URL=" .env | xargs)
-pg_dump "$DATABASE_URL" -Fc -f ~/chatmql-truoc-deploy-$(date +%F-%H%M).dump
-ls -lh ~/chatmql-truoc-deploy-*.dump
+cd /www/wwwroot/bizcrm_backend_source && DB=$(docker inspect bizcrm2_api --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | cut -d= -f2- | sed 's/host.docker.internal/127.0.0.1/') && npx prisma migrate diff --from-url "$DB" --to-schema-datamodel prisma/schema.prisma --script
 ```
 
-Thấy tệp vài chục MB trở lên là được. Ra 0 byte thì `DATABASE_URL` sai — dừng lại.
-
-⚠️ **Tệp dump này chứa dữ liệu khách hàng thật.** Để yên trên máy chủ, đừng tải
-về máy cá nhân và tuyệt đối đừng đưa vào thư mục mã nguồn — kho mã này đang công
-khai.
+Thấy `DROP COLUMN` hoặc `DROP TABLE` nào ngoài ba chỉ mục HNSW → **dừng lại**,
+khai báo thứ đó vào `schema.prisma` rồi soi lại.
 
 ---
 
-## Giai đoạn 2 — Kéo mã mới
+## 1. Chuẩn bị (chạy ở máy dev)
 
 ```bash
-cd <thư-mục-mã-nguồn>
-git fetch origin
-git checkout main
-git pull origin main
-git log --oneline -1
+rsync -az --delete --exclude node_modules --exclude dist --exclude uploads --exclude .env --exclude '*.dump' bizcrm_backend_source/ root@160.191.160.53:/www/wwwroot/bizcrm_backend_source/
 ```
 
-Dòng cuối phải hiện commit gộp:
+`.env` trên máy chủ là tệp cũ của máy dev (`apple@localhost/bizcrm2`) và **không
+được dùng** — cấu hình thật nằm trong biến môi trường của container. Luôn loại
+trừ nó khi đồng bộ.
 
-```
-3d38db9 Merge PR #1: tài liệu bán hàng, nguồn sản phẩm FM, Mini App, luật nhắc tên AI
-```
+## 2. Sao lưu (trên máy chủ)
 
-Không ra đúng commit này thì remote đang trỏ sai kho. Kiểm tra `git remote -v`,
-phải là `adtuannv/chatmql-traduocvietnam`.
-
----
-
-## Giai đoạn 3 — Backend
-
-### 3.1. Cài thư viện
+`pg_dump` của hệ thống là bản 16, còn máy chủ chạy Postgres 18 → phải dùng đúng
+đường dẫn này, nếu không nó báo lỗi lệch phiên bản:
 
 ```bash
-cd <thư-mục-mã-nguồn>/bizcrm_backend_source
-npm ci
+mkdir -p /root/chatmql-deploy && cd /root/chatmql-deploy && DB=$(docker inspect bizcrm2_api --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | cut -d= -f2- | sed 's/host.docker.internal/127.0.0.1/') && /www/server/pgsql/bin/pg_dump "$DB" -Fc -f truoc-deploy-$(date +%F-%H%M).dump && ls -lh *.dump
 ```
 
-### 3.2. Bổ sung biến môi trường
-
-Bản này thêm nguồn sản phẩm chính thức. Xem `.env` đã có chưa:
+Rồi lưu cấu hình container và gắn nhãn ảnh cũ để lui về:
 
 ```bash
-grep -E "CRM_PRODUCT_SOURCE|FM_PRODUCT_API" .env
+cd /root/chatmql-deploy && docker inspect bizcrm2_api --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(PATH|NODE_VERSION|YARN_VERSION)=' | grep . > env.list && chmod 600 env.list && docker tag bizcrm-backend:full bizcrm-backend:rollback-$(date +%Y%m%d) && wc -l < env.list
 ```
 
-Thiếu thì thêm vào cuối `.env` (khoá lấy từ máy phát triển):
-
-```
-CRM_PRODUCT_SOURCE=official
-FM_PRODUCT_API_URL=https://apifm.traduoc.vn
-FM_PRODUCT_API_KEY=<khoá>
-```
-
-`ZALO_MINIAPP_PRODUCT_URL` **không cần** nữa — mã đã có mẫu mặc định sẵn.
-
-### 3.3. Cập nhật cơ sở dữ liệu
+## 3. Dựng ảnh và đổi container
 
 ```bash
-npx prisma generate
-npx prisma db push
+cd /www/wwwroot/bizcrm_backend_source && docker build -t bizcrm-backend:full .
 ```
-
-Toàn bộ thay đổi là **thêm cột và thêm bảng**, không xoá, không đổi kiểu.
-
-### 3.4. Tạo lại ba chỉ mục vector — BẮT BUỘC
-
-`prisma db push` vừa **xoá ba chỉ mục HNSW** vì lược đồ Prisma không khai báo
-chúng. Mất chúng thì hệ thống vẫn chạy, chỉ là tìm kiếm ngữ nghĩa của AI chuyển
-sang quét tuần tự — chậm dần theo lượng dữ liệu và **không có lỗi nào báo ra**.
-Đây là kiểu hỏng khó phát hiện nhất, nên làm ngay:
 
 ```bash
-psql "$DATABASE_URL" -c "
-CREATE INDEX IF NOT EXISTS idx_products_embedding_hnsw ON products USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX IF NOT EXISTS idx_knowledge_entries_embedding_hnsw ON knowledge_entries USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX IF NOT EXISTS idx_ai_scenarios_embedding_hnsw ON ai_scenarios USING hnsw (embedding vector_cosine_ops);"
+docker stop bizcrm2_api && docker rm bizcrm2_api && docker run -d --name bizcrm2_api --restart unless-stopped --network tra-crm_default -p 4520:4520 --add-host host.docker.internal:host-gateway --env-file /root/chatmql-deploy/env.list -v bizcrm2_uploads:/app/uploads bizcrm-backend:full
 ```
 
-**Kiểm tra — phải ra đúng `3`:**
+Gián đoạn khoảng 30–60 giây. `--add-host host.docker.internal:host-gateway` là
+bắt buộc — thiếu nó container không nối được vào Postgres trên host.
+
+## 4. Tạo lại ba chỉ mục vector
+
+`db push` xoá chúng vì `schema.prisma` không khai báo. Mất thì hệ thống **vẫn
+chạy**, chỉ là tìm kiếm ngữ nghĩa của AI chuyển sang quét tuần tự — chậm dần và
+không báo lỗi gì. Đây là kiểu hỏng khó phát hiện nhất.
 
 ```bash
-psql "$DATABASE_URL" -t -c "select count(*) from pg_indexes where indexname like 'idx_%_embedding_hnsw';"
+DB=$(docker inspect bizcrm2_api --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | cut -d= -f2- | sed 's/host.docker.internal/127.0.0.1/') && psql "$DB" -c "CREATE INDEX IF NOT EXISTS idx_products_embedding_hnsw ON products USING hnsw (embedding vector_cosine_ops); CREATE INDEX IF NOT EXISTS idx_knowledge_entries_embedding_hnsw ON knowledge_entries USING hnsw (embedding vector_cosine_ops); CREATE INDEX IF NOT EXISTS idx_ai_scenarios_embedding_hnsw ON ai_scenarios USING hnsw (embedding vector_cosine_ops);" && psql "$DB" -t -c "select count(*) from pg_indexes where indexname like 'idx_%_embedding_hnsw';"
 ```
 
-### 3.5. Biên dịch và khởi động lại
+Phải ra đúng **3**.
+
+## 5. Frontend
+
+Ở máy dev:
 
 ```bash
-npm run build
+cd chatmql-frontend && npm run build && rsync -az --delete dist/ root@160.191.160.53:/www/wwwroot/crm_biz/frontend/dist/
 ```
 
-Rồi khởi động lại theo đúng cách máy chủ đang chạy (tên lấy ở giai đoạn 0):
+Rồi trên máy chủ (nginx chạy dưới user `www`, sai quyền là trả 403):
 
 ```bash
-pm2 restart <tên-tiến-trình> && pm2 logs <tên-tiến-trình> --lines 40
+chown -R www:www /www/wwwroot/crm_biz/frontend/dist
 ```
 
-hoặc:
+## 6. Nghiệm thu
 
 ```bash
-systemctl restart <tên-service> && journalctl -u <tên-service> -n 40 --no-pager
+for p in / /api/v1/auth/me "/socket.io/?EIO=4&transport=polling"; do printf "%-46s " "$p"; curl -s -o /dev/null -m 15 -w "HTTP %{http_code}\n" "https://chatmql.traduocvietnam.com$p"; done
 ```
 
-**Kiểm tra:** nhật ký không có dòng lỗi, và:
+- `/` → 200 · `/api/v1/auth/me` → **401** (đúng: backend sống, đang đòi đăng
+  nhập) · socket.io → 200.
+- Ảnh: `curl -sI https://chatmql.traduocvietnam.com/uploads/doc-assets/<tên>.jpg`
+  phải ra `image/jpeg`. Ra `text/html` là nginx lại chặn — xem `location ^~ /uploads/`.
+- Bản frontend đang phục vụ có khớp bản vừa build không:
+  `curl -s https://chatmql.traduocvietnam.com/ | grep -o 'index-[A-Za-z0-9_-]*\.js'`
+- Tài khoản kênh kết nối lại chưa:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:4520/api/v1/auth/me
+DB=$(docker inspect bizcrm2_api --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | cut -d= -f2- | sed 's/host.docker.internal/127.0.0.1/') && psql "$DB" -c "select platform, status, count(*) from channel_accounts where deleted_at is null and is_disabled = false group by 1,2 order by 1;"
 ```
 
-Ra `401` là **đúng** — backend sống và đang đòi đăng nhập. Ra `000` là backend
-chưa lên, đọc nhật ký để tìm nguyên nhân.
+Vài dòng `[zalo-pool] Reconnect failed` ngay sau khi khởi động là **bình thường**
+— lần thử đầu trong lúc container còn đang lên, vài giây sau nối lại được. Chỉ lo
+khi sau 2 phút mà `status` vẫn không về `connected`.
 
----
+## 7. Lui về
 
-## Giai đoạn 4 — Frontend
+Ảnh cũ vẫn còn ở nhãn `bizcrm-backend:rollback-<ngày>`:
 
 ```bash
-cd <thư-mục-mã-nguồn>/chatmql-frontend
-npm ci
-npm run build
+docker stop bizcrm2_api && docker rm bizcrm2_api && docker run -d --name bizcrm2_api --restart unless-stopped --network tra-crm_default -p 4520:4520 --add-host host.docker.internal:host-gateway --env-file /root/chatmql-deploy/env.list -v bizcrm2_uploads:/app/uploads bizcrm-backend:rollback-<ngày>
 ```
 
-Kết quả nằm ở `chatmql-frontend/dist`. Chép vào thư mục nginx đang phục vụ —
-xem đường dẫn đó bằng:
+Frontend lui bằng bản sao ở `/root/chatmql-deploy/dist-cu-<ngày>`.
+
+Phục hồi cơ sở dữ liệu là phương án cuối, vì nó **xoá mọi tin nhắn đến sau lúc
+sao lưu**:
 
 ```bash
-nginx -T 2>/dev/null | grep -A3 "server_name chatmql" | grep root
+/www/server/pgsql/bin/pg_restore -d "$DB" --clean --if-exists /root/chatmql-deploy/truoc-deploy-<...>.dump
 ```
 
-Rồi chép (đổi `<thư-mục-web>` cho đúng):
+## 8. Sau khi deploy
 
-```bash
-cp -r dist/* <thư-mục-web>/
-```
-
-**Kiểm tra:** mở `https://chatmql.traduocvietnam.com`, tải lại cứng
-(`Ctrl+Shift+R`). Vào trang **Sản phẩm**, phải thấy nút **Nguồn dữ liệu** — nút
-này chỉ có ở bản mới, nên thấy nó là chắc chắn frontend đã lên đúng.
-
----
-
-## Giai đoạn 5 — Nghiệm thu
-
-Bốn thứ, làm lần lượt:
-
-**1. Ảnh hiển thị được** (nginx đã sửa từ trước, kiểm tra lại cho chắc):
-
-```bash
-curl -s -o /dev/null -w "%{content_type}\n" https://chatmql.traduocvietnam.com/uploads/doc-assets/test.jpg
-```
-
-Phải ra `application/json`. Ra `text/html` là nginx lại chặn.
-
-**2. Danh sách sản phẩm lên được.** Vào trang **Sản phẩm**, phải thấy 84 sản
-phẩm. Trống trơn thì `.env` thiếu khoá FM — quay lại 3.2.
-
-**3. Gửi thử tin nhắn.** ⚠️ **Chỉ thử trên hội thoại Web Chat thử nghiệm.**
-Đừng thử trên hội thoại Zalo thật — máy chủ đang giữ phiên đăng nhập của tài
-khoản công ty, gửi nhầm là khách nhận thật.
-
-**4. Đặt tên nhận biết cho AI — làm ngay, đừng để sau.**
-
-Bản này bật mặc định luật *"chỉ trả lời khi được nhắc tên"* trong nhóm. Từ lúc
-deploy xong, **AI im lặng trong mọi nhóm** cho tới khi có tên để nhận biết.
-
-Vào **AI → Trả lời tự động**, đặt tên gọi (thường là tên tài khoản Zalo công ty,
-ví dụ `Ngô Tuấn Cco Tdvn`), lưu lại. Rồi báo đội sale: trong nhóm phải tag tên
-thì AI mới trả lời.
-
-Nhóm nào muốn AI đáp mọi câu như cũ thì mở menu **Chế độ AI** của nhóm đó, chọn
-*Tắt cho nhóm này* — đặt tại nhóm thắng cài đặt chung.
-
----
-
-## Giai đoạn 6 — Dựng cây tài liệu bán hàng
-
-Làm sau khi giai đoạn 5 đã đạt. Chi tiết ở
-[viec-can-lam-tren-may-chu.md](viec-can-lam-tren-may-chu.md) mục 4. Tóm tắt:
-
-```bash
-cd <thư-mục-mã-nguồn>/bizcrm_backend_source
-psql "$DATABASE_URL" -c "create table product_docs_bak as select * from product_docs; create table doc_folders_bak as select * from doc_folders;"
-psql "$DATABASE_URL" -c "select id, name from organizations order by created_at;"
-npx tsx scripts/backfill-doc-library.ts --org=<id>            # xem trước
-npx tsx scripts/backfill-doc-library.ts --org=<id> --apply    # ghi thật
-```
-
-Bước xem trước phải báo khoảng 84 tài liệu. Ra 0 là nguồn sản phẩm sai.
-
----
-
-## Nếu phải quay lui
-
-Không có thay đổi nào phá dữ liệu cũ — chỉ thêm cột và bảng. Nên quay lui chỉ
-cần trả mã về commit cũ:
-
-```bash
-cd <thư-mục-mã-nguồn>
-git checkout <commit-cũ-ghi-ở-giai-đoạn-0>
-cd bizcrm_backend_source && npm ci && npm run build
-pm2 restart <tên-tiến-trình>
-cd ../chatmql-frontend && npm ci && npm run build && cp -r dist/* <thư-mục-web>/
-```
-
-Cột và bảng mới cứ để nguyên — bản cũ không đọc tới chúng.
-
-Chỉ khi cơ sở dữ liệu thật sự hỏng mới cần phục hồi từ dump, và thao tác này
-**xoá mọi tin nhắn đến sau lúc sao lưu**:
-
-```bash
-pg_restore -d "$DATABASE_URL" --clean --if-exists ~/chatmql-truoc-deploy-<...>.dump
-```
+1. Vào **AI → Trả lời tự động**, đặt **tên gọi để nhận biết**. Luật "chỉ trả lời
+   khi được nhắc tên" mặc định BẬT, nên trước khi đặt tên thì AI im trong mọi nhóm.
+2. Gửi thử một tin — **chỉ trên hội thoại Web Chat thử nghiệm**. Máy chủ đang giữ
+   phiên đăng nhập Zalo của 16 tài khoản thật; gửi nhầm là khách nhận thật.
+3. Vài ngày sau, dọn tệp sao lưu trong `/root/chatmql-deploy` cho nhẹ đĩa.
