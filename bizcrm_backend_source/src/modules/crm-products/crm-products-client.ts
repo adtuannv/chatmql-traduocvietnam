@@ -28,6 +28,9 @@ import { fetchProductCatalog } from '../orders/crm-order-client.js'
 
 const TIMEOUT_MS = 15_000
 
+/** Trần `limit` của FM; vượt là lỗi 422 chứ không được cắt bớt giúp. */
+const FM_LIMIT_MAX = 500
+
 /** Nguồn dữ liệu đang bật. Thiếu cấu hình dashboard thì tự về bridge. */
 export type CrmProductSource = 'bridge' | 'dashboard' | 'local' | 'official'
 
@@ -190,9 +193,9 @@ function pick(row: Record<string, unknown>, keys: string[]): unknown {
  */
 export function normalizeProduct(row: Record<string, unknown>): CrmProduct {
   return {
-    id: (pick(row, ['id', 'product_id', 'id_product']) as string | number) ?? null,
+    id: (pick(row, ['id', 'id_product', 'product_id']) as string | number) ?? null,
     code: str(pick(row, ['code', 'code_product', 'sku', 'ma_sp', 'product_code'])),
-    name: str(pick(row, ['name', 'product_name', 'ten_sp', 'title'])) ?? '(không tên)',
+    name: str(pick(row, ['name', 'name_product', 'product_name', 'ten_sp', 'title'])) ?? '(không tên)',
     price: num(pick(row, ['price', 'gia_ban', 'sale_price', 'unit_price', 'price_sale'])),
     priceMax: num(pick(row, ['price_max', 'gia_max', 'max_price'])),
     currency: str(pick(row, ['currency', 'don_vi_tien'])) ?? 'VND',
@@ -202,9 +205,14 @@ export function normalizeProduct(row: Record<string, unknown>): CrmProduct {
     weight: num(pick(row, ['weight', 'khoi_luong', 'trong_luong'])),
     warehouseId: num(pick(row, ['warehouse_id', 'id_kho', 'kho_id'])),
     warehouseName: str(pick(row, ['warehouse_name', 'ten_kho', 'kho'])),
-    categoryId: (pick(row, ['category_id', 'id_danh_muc', 'nhom_id', 'group_id']) as string | number) ?? null,
-    categoryName: str(pick(row, ['category_name', 'category', 'danh_muc', 'nhom_sp', 'ten_nhom'])),
-    brand: str(pick(row, ['brand', 'thuong_hieu', 'brand_name'])),
+    categoryId: (pick(row, [
+      'category_id', 'id_product_type', 'id_product_group', 'id_danh_muc', 'nhom_id', 'group_id',
+    ]) as string | number) ?? null,
+    categoryName: str(pick(row, [
+      'category_name', 'category', 'name_product_type', 'name_product_group',
+      'danh_muc', 'nhom_sp', 'ten_nhom',
+    ])),
+    brand: str(pick(row, ['brand', 'name_brand', 'thuong_hieu', 'brand_name'])),
     status: str(pick(row, ['status', 'trang_thai', 'active'])),
     imageUrl: firstImage(row),
     miniAppId: str(pick(row, ['miniapp_id', 'mini_app_id', 'zalo_product_id', 'ma_zalo'])),
@@ -353,12 +361,21 @@ async function searchViaLocal(orgId: string, q: string, limit: number): Promise<
  * sung tên khoá vào đó chứ không phải sửa chỗ khác. Khoá thật của bản ghi vẫn
  * nằm nguyên trong `raw`.
  */
-async function docTuFm(limit: number): Promise<CrmProduct[]> {
+async function docTuFm(
+  limit: number,
+  opts: { q?: string; offset?: number } = {},
+): Promise<{ rows: CrmProduct[]; total: number }> {
   const base = (process.env.FM_PRODUCT_API_URL || '').replace(/\/$/, '')
   const key = process.env.FM_PRODUCT_API_KEY || ''
   if (!base || !key) throw new Error('FM_PRODUCT_API_URL hoặc FM_PRODUCT_API_KEY chưa cấu hình')
 
-  const url = `${base}/api/products/external/list?limit=${Math.min(1000, Math.max(1, limit))}`
+  // FM tự tìm kiếm và phân trang, nên đẩy việc sang máy chủ thay vì kéo trọn
+  // danh mục về rồi lọc — danh mục lớn thì cách kia vừa chậm vừa tốn băng thông.
+  // FM chặn limit > 500 bằng lỗi 422, không phải tự cắt bớt.
+  const qs = new URLSearchParams({ limit: String(Math.min(FM_LIMIT_MAX, Math.max(1, limit))) })
+  if (opts.q?.trim()) qs.set('search', opts.q.trim())
+  if (opts.offset) qs.set('offset', String(opts.offset))
+  const url = `${base}/api/products/external/list?${qs.toString()}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
@@ -373,14 +390,17 @@ async function docTuFm(limit: number): Promise<CrmProduct[]> {
         : text.slice(0, 200)
       throw new Error(`FM trả lỗi ${res.status}: ${hint}`)
     }
-    const rows = extractRows(text ? JSON.parse(text) : null)
+    const payload = text ? JSON.parse(text) : null
+    const rows = extractRows(payload)
     if (!rows.length && text) {
       logger.warn({ sample: text.slice(0, 300) }, '[crm-products] không bóc được mảng sản phẩm từ FM')
-    } else if (rows.length) {
-      // Ghi khoá thật một lần để chỉnh normalizeProduct nếu tên trường lệch.
-      logger.debug({ keys: Object.keys(rows[0]) }, '[crm-products] khoá dữ liệu FM')
     }
-    return rows.map(normalizeProduct)
+    // `total` của FM là tổng THẬT sau khi lọc, không phải số dòng trang này.
+    const total = Number((payload as { total?: unknown } | null)?.total)
+    return {
+      rows: rows.map(normalizeProduct),
+      total: Number.isFinite(total) ? total : rows.length,
+    }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error(`FM không phản hồi trong ${TIMEOUT_MS / 1000}s`)
@@ -388,6 +408,28 @@ async function docTuFm(limit: number): Promise<CrmProduct[]> {
     throw err
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/**
+ * Danh sách danh mục của toàn bộ danh mục FM, KHÔNG phải của trang đang xem.
+ *
+ * Gom từ trang hiện tại thì bộ lọc chỉ hiện vài danh mục và đổi liên tục theo
+ * trang — người dùng tưởng danh mục biến mất. Cache vì danh mục hiếm khi đổi.
+ */
+const DANH_MUC_TTL_MS = 5 * 60_000
+let cacheDanhMuc: { at: number; value: string[] } | null = null
+
+async function danhMucFm(): Promise<string[]> {
+  if (cacheDanhMuc && Date.now() - cacheDanhMuc.at < DANH_MUC_TTL_MS) return cacheDanhMuc.value
+  try {
+    const { rows } = await docTuFm(FM_LIMIT_MAX)
+    const value = [...new Set(rows.map((p) => p.categoryName).filter((c): c is string => !!c))].sort()
+    cacheDanhMuc = { at: Date.now(), value }
+    return value
+  } catch {
+    // Không lấy được danh mục thì bộ lọc trống, nhưng danh sách vẫn phải chạy.
+    return cacheDanhMuc?.value ?? []
   }
 }
 
@@ -420,9 +462,7 @@ export async function searchCrmProducts(
   const safeLimit = Math.min(100, Math.max(1, limit))
   let products: CrmProduct[]
   if (source === 'official') {
-    // FM chưa có tham số tìm kiếm nên lấy rộng rồi lọc tại đây.
-    const tat_ca = await docTuFm(1000)
-    products = locTheoTuKhoa(tat_ca, q).slice(0, safeLimit)
+    products = (await docTuFm(safeLimit, { q })).rows
   } else if (source === 'dashboard') {
     products = await searchViaDashboard(q, safeLimit)
   } else if (source === 'local') {
@@ -431,13 +471,6 @@ export async function searchCrmProducts(
     products = await searchViaBridge(q, safeLimit)
   }
   return { source, products }
-}
-
-/** Lọc theo tên hoặc mã, dùng cho nguồn không tự tìm kiếm được. */
-function locTheoTuKhoa(rows: CrmProduct[], q: string): CrmProduct[] {
-  const needle = q.trim().toLowerCase()
-  if (!needle) return rows
-  return rows.filter((p) => `${p.name} ${p.code ?? ''}`.toLowerCase().includes(needle))
 }
 
 /** Nguồn nội bộ mà thiếu tổ chức là lỗi lập trình, không phải lỗi cấu hình. */
@@ -478,9 +511,44 @@ export async function listCrmProducts(params: ListParams = {}): Promise<ListResu
   const page = Math.max(1, params.page ?? 1)
   const pageSize = Math.min(200, Math.max(1, params.pageSize ?? 50))
 
-  const all = source === 'official'
-    ? await docTuFm(1000)
-    : source === 'dashboard'
+  if (source === 'official') {
+    // FM lọc được theo từ khoá nhưng KHÔNG lọc theo tên danh mục hay tồn kho.
+    // Lọc hai thứ đó sau khi đã phân trang sẽ ra kết quả sai: trang 1 lọc còn
+    // 2 dòng thì người dùng tưởng cả kho chỉ có 2. Nên khi có hai bộ lọc này
+    // thì lấy trọn danh mục rồi tự lọc và cắt trang.
+    const locTaiCho = !!params.category || !!params.inStockOnly
+
+    if (!locTaiCho) {
+      const { rows, total } = await docTuFm(pageSize, {
+        q: params.q,
+        offset: (page - 1) * pageSize,
+      })
+      return {
+        source,
+        products: rows,
+        categories: await danhMucFm(),
+        meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
+      }
+    }
+
+    const { rows } = await docTuFm(FM_LIMIT_MAX, { q: params.q })
+    const loc = rows.filter((p) => {
+      if (params.category && (p.categoryName ?? '') !== params.category) return false
+      if (params.inStockOnly && !(p.inventory != null && p.inventory > 0)) return false
+      return true
+    })
+    return {
+      source,
+      products: loc.slice((page - 1) * pageSize, page * pageSize),
+      categories: await danhMucFm(),
+      meta: {
+        page, pageSize, total: loc.length,
+        totalPages: Math.max(1, Math.ceil(loc.length / pageSize)),
+      },
+    }
+  }
+
+  const all = source === 'dashboard'
       ? await searchViaDashboard(params.q ?? '', 200)
       : source === 'local'
         ? await searchViaLocal(requireOrg(params.orgId), '', 1000)
