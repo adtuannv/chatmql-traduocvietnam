@@ -27,6 +27,7 @@ import { apiError } from '@/lib/api-client'
 import {
   useMiniAppCatalog, useSetMiniAppId, type CrmProduct, type MiniAppItem,
 } from '@/hooks/use-crm-products'
+import { miniAppLink } from '@/lib/miniapp-link'
 
 /** Bỏ dấu và ký tự thừa để so tên hai bên, vì cách đặt tên không giống nhau. */
 function chuan(s: string): string {
@@ -56,9 +57,8 @@ function xepUngVien(items: MiniAppItem[], p: CrmProduct, tuKhoa: string): MiniAp
 
 export function MiniAppCell({ p, mauLink }: { p: CrmProduct; mauLink: string }) {
   const [mo, setMo] = useState(false)
-  const link = p.miniAppId && mauLink
-    ? mauLink.replaceAll('{miniapp}', encodeURIComponent(p.miniAppId))
-    : null
+  // Dùng đúng hàm mà nút Gửi dùng: link xem thử ở đây phải là link khách nhận.
+  const link = miniAppLink(mauLink, p)
 
   return (
     <>

@@ -42,6 +42,17 @@ const KHOA_NGUON = 'crm.product_source'
 /** Khoá lưu mẫu link Mini App do quản trị đặt trong giao diện. */
 const KHOA_MAU_LINK = 'miniapp.url_template'
 
+/**
+ * Mẫu link Mini App của Trà Dược Việt Nam — dùng khi chưa ai cấu hình gì.
+ *
+ * Để trống làm mặc định thì mọi nút gửi sản phẩm bị khoá ngay từ lúc dựng máy
+ * chủ, và thông báo lại bảo đi đặt biến môi trường — đúng cái đã xảy ra trên
+ * bản thật. Có sẵn giá trị đúng thì cài xong là chạy; nơi nào khác vẫn đè được
+ * bằng giao diện hoặc biến môi trường.
+ */
+export const MAU_LINK_MAC_DINH =
+  'https://zalo.me/s/1575573710529516487/?page=detail-product&product_id={miniapp}'
+
 // Mỗi tin đến đều hỏi nguồn; cache ngắn để khỏi truy vấn liên tục, và đủ ngắn
 // để quản trị đổi xong là thấy hiệu lực gần như ngay.
 const NGUON_TTL_MS = 15_000
@@ -94,7 +105,7 @@ export async function mauLinkMiniApp(orgId: string): Promise<string> {
     const v = (row?.valuePlain ?? '').trim()
     if (v) return v
   } catch { /* đọc hỏng thì rơi về biến môi trường */ }
-  return process.env.ZALO_MINIAPP_PRODUCT_URL || ''
+  return process.env.ZALO_MINIAPP_PRODUCT_URL || MAU_LINK_MAC_DINH
 }
 
 export async function luuMauLinkMiniApp(orgId: string, mau: string): Promise<void> {

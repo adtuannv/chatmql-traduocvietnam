@@ -23,29 +23,7 @@ import { cn } from '@/lib/utils'
 import { formatVnd } from '@/lib/order-calc'
 import { useSendMessage } from '@/hooks/use-conversations'
 import { useCrmProductList, useCrmProductSource, type CrmProduct } from '@/hooks/use-crm-products'
-
-/**
- * Dựng link Mini App từ mẫu cấu hình. Thiếu mẫu hoặc thiếu mã thì không gửi.
- *
- * `{miniapp}` là mã bên hệ quản trị Zalo Mini App và là thứ Mini App thật sự
- * hiểu; `{code}`/`{id}` giữ lại cho hệ thống nguồn nào đánh địa chỉ kiểu khác.
- * Mã chứa dấu gạch chéo nên phải mã hoá, đúng như link hệ quản trị sinh ra.
- */
-function miniAppLink(template: string, p: CrmProduct): string | null {
-  if (!template) return null
-  const phan: Record<string, string> = {
-    '{miniapp}': p.miniAppId?.trim() ?? '',
-    '{code}': p.code?.trim() ?? '',
-    '{id}': p.id != null ? String(p.id) : '',
-  }
-  let out = template
-  for (const [khoa, gia_tri] of Object.entries(phan)) {
-    if (!template.includes(khoa)) continue
-    if (!gia_tri) return null
-    out = out.replaceAll(khoa, encodeURIComponent(gia_tri))
-  }
-  return out
-}
+import { miniAppLink } from '@/lib/miniapp-link'
 
 /** Tin gửi khách: gọn như một thẻ hàng, dòng cuối là link để bấm. */
 function buildMessage(p: CrmProduct, link: string): string {

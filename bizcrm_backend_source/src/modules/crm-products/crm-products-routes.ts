@@ -8,7 +8,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '../../shared/prisma-client.js'
 import {
   searchCrmProducts, listCrmProducts, resolveSource, resolveSourceFor,
-  nguonDaChon, luuNguon, mauLinkMiniApp, luuMauLinkMiniApp,
+  nguonDaChon, luuNguon, mauLinkMiniApp, luuMauLinkMiniApp, MAU_LINK_MAC_DINH,
   CAC_NGUON, type CrmProductSource,
 } from './crm-products-client.js'
 
@@ -46,7 +46,7 @@ export async function crmProductRoutes(app: FastifyInstance): Promise<void> {
       officialConfigured: !!(process.env.FM_PRODUCT_API_URL && process.env.FM_PRODUCT_API_KEY),
       miniAppUrlTemplate: await mauLinkMiniApp(u.orgId),
       /** Mẫu ở biến môi trường — để giao diện nói rõ đang lấy từ đâu. */
-      miniAppUrlFromEnv: process.env.ZALO_MINIAPP_PRODUCT_URL || '',
+      miniAppUrlMacDinh: process.env.ZALO_MINIAPP_PRODUCT_URL || MAU_LINK_MAC_DINH,
       canEdit: canEditSource(u.role),
     }
   })

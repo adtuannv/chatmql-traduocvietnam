@@ -97,7 +97,8 @@ export interface NguonInfo {
   /** Mẫu link Mini App, chứa {miniapp}/{code}/{id}. Rỗng = chưa cấu hình. */
   miniAppUrlTemplate: string
   /** Mẫu lấy từ biến môi trường — để nói rõ giá trị đang từ đâu. */
-  miniAppUrlFromEnv: string
+  /** Mẫu dùng khi không đặt riêng trong giao diện. Luôn có giá trị. */
+  miniAppUrlMacDinh: string
   canEdit: boolean
 }
 

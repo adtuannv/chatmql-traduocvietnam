@@ -133,8 +133,8 @@ export function SourceSwitch({ info }: { info: NguonInfo }) {
             </div>
             <p className="text-[11px] leading-snug text-muted-foreground">
               Phải chứa <code className="font-mono">{'{miniapp}'}</code> — chỗ thay bằng mã sản phẩm bên
-              hệ quản trị Mini App. Bỏ trống thì dùng cấu hình của máy chủ
-              {info.miniAppUrlFromEnv ? ' (đang có)' : ' (đang trống)'}.
+              hệ quản trị Mini App. Bỏ trống thì quay về mẫu mặc định:{' '}
+              <code className="break-all font-mono">{info.miniAppUrlMacDinh}</code>
             </p>
           </div>
 
