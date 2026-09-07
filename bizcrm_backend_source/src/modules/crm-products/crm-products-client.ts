@@ -31,6 +31,72 @@ const TIMEOUT_MS = 15_000
 /** Nguồn dữ liệu đang bật. Thiếu cấu hình dashboard thì tự về bridge. */
 export type CrmProductSource = 'bridge' | 'dashboard' | 'local' | 'official'
 
+export const CAC_NGUON: CrmProductSource[] = ['official', 'bridge', 'dashboard', 'local']
+
+/** Khoá lưu nguồn do quản trị chọn trong giao diện. */
+const KHOA_NGUON = 'crm.product_source'
+
+// Mỗi tin đến đều hỏi nguồn; cache ngắn để khỏi truy vấn liên tục, và đủ ngắn
+// để quản trị đổi xong là thấy hiệu lực gần như ngay.
+const NGUON_TTL_MS = 15_000
+const cacheNguon = new Map<string, { at: number; value: CrmProductSource | null }>()
+
+export function xoaCacheNguon(orgId?: string): void {
+  if (orgId) cacheNguon.delete(orgId)
+  else cacheNguon.clear()
+}
+
+/**
+ * Nguồn quản trị đã chọn trong giao diện, hoặc null nếu chưa chọn.
+ *
+ * Cho phép đổi nguồn mà không phải sửa tệp cấu hình rồi khởi động lại máy chủ —
+ * việc đó chỉ kỹ thuật làm được, còn đây là quyết định vận hành.
+ */
+export async function nguonDaChon(orgId: string): Promise<CrmProductSource | null> {
+  const hit = cacheNguon.get(orgId)
+  if (hit && Date.now() - hit.at < NGUON_TTL_MS) return hit.value
+  let value: CrmProductSource | null = null
+  try {
+    const row = await prisma.appSetting.findFirst({
+      where: { orgId, settingKey: KHOA_NGUON },
+      select: { valuePlain: true },
+    })
+    const v = (row?.valuePlain ?? '').trim() as CrmProductSource
+    if (CAC_NGUON.includes(v)) value = v
+  } catch {
+    // Đọc cấu hình hỏng thì rơi về biến môi trường, không chặn cả module.
+  }
+  cacheNguon.set(orgId, { at: Date.now(), value })
+  return value
+}
+
+/** Lưu chuỗi rỗng để bỏ lựa chọn, quay về cấu hình của máy chủ. */
+export async function luuNguon(orgId: string, nguon: CrmProductSource | ''): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { orgId_settingKey: { orgId, settingKey: KHOA_NGUON } },
+    update: { valuePlain: nguon },
+    create: { orgId, settingKey: KHOA_NGUON, valuePlain: nguon },
+  })
+  xoaCacheNguon(orgId)
+}
+
+/**
+ * Nguồn đang thực sự dùng: ưu tiên lựa chọn của quản trị, rồi tới biến môi
+ * trường. Nguồn nào thiếu cấu hình bắt buộc thì bỏ qua để không rơi vào cảnh
+ * giao diện trống trơn mà không rõ lý do.
+ */
+export async function resolveSourceFor(orgId: string): Promise<CrmProductSource> {
+  const chon = await nguonDaChon(orgId)
+  if (chon) {
+    if (chon === 'official' && (!process.env.FM_PRODUCT_API_URL || !process.env.FM_PRODUCT_API_KEY)) {
+      return resolveSource()
+    }
+    if (chon === 'dashboard' && !process.env.CRM_DASHBOARD_TOKEN) return resolveSource()
+    return chon
+  }
+  return resolveSource()
+}
+
 export function resolveSource(): CrmProductSource {
   const want = (process.env.CRM_PRODUCT_SOURCE || '').toLowerCase()
   // Nguồn chính thức chỉ bật khi có ĐỦ địa chỉ và khoá — thiếu một trong hai
@@ -350,7 +416,7 @@ export async function searchCrmProducts(
   limit = 20,
   orgId?: string,
 ): Promise<{ source: CrmProductSource; products: CrmProduct[] }> {
-  const source = resolveSource()
+  const source = orgId ? await resolveSourceFor(orgId) : resolveSource()
   const safeLimit = Math.min(100, Math.max(1, limit))
   let products: CrmProduct[]
   if (source === 'official') {
@@ -408,7 +474,7 @@ export interface ListResult {
  * thay phần thân hàm này, hình dạng trả về giữ nguyên.
  */
 export async function listCrmProducts(params: ListParams = {}): Promise<ListResult> {
-  const source = resolveSource()
+  const source = params.orgId ? await resolveSourceFor(params.orgId) : resolveSource()
   const page = Math.max(1, params.page ?? 1)
   const pageSize = Math.min(200, Math.max(1, params.pageSize ?? 50))
 

@@ -25,6 +25,7 @@ import { apiError } from '@/lib/api-client'
 import { formatVnd } from '@/lib/order-calc'
 import { cn } from '@/lib/utils'
 import { MiniAppCell } from './miniapp-cell'
+import { SourceSwitch } from './source-switch'
 import { useFormLookups } from '@/hooks/use-order-form'
 import { SOURCE_LABELS, useCrmProductList, useCrmProductSource, type CrmProduct } from '@/hooks/use-crm-products'
 
@@ -91,9 +92,12 @@ export function CrmProductsPage() {
         title="Sản phẩm (CRM)"
         description="Danh sách sản phẩm chính thức, lấy trực tiếp từ hệ thống nguồn — giá và tồn kho là số thật, không phải bản sao."
         actions={
-          <Button variant="outline" className="gap-1.5" onClick={() => listQ.refetch()} disabled={listQ.isFetching}>
-            <RefreshCw className={listQ.isFetching ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Tải lại
-          </Button>
+          <>
+            {sourceQ.data && <SourceSwitch info={sourceQ.data} />}
+            <Button variant="outline" className="gap-1.5" onClick={() => listQ.refetch()} disabled={listQ.isFetching}>
+              <RefreshCw className={listQ.isFetching ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Tải lại
+            </Button>
+          </>
         }
       />
 

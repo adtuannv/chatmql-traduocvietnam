@@ -50,9 +50,10 @@ export interface CrmProductListResult {
   meta: { page: number; pageSize: number; total: number; totalPages: number }
 }
 
-export type CrmProductSource = 'bridge' | 'dashboard' | 'local'
+export type CrmProductSource = 'official' | 'bridge' | 'dashboard' | 'local'
 
 export const SOURCE_LABELS: Record<CrmProductSource, string> = {
+  official: 'Hệ thống sản phẩm chính thức TDVN',
   bridge: 'Cầu nối ChatMQL ↔ CRM (service key)',
   dashboard: 'API dashboard CRM (Bearer token)',
   local: 'Bảng sản phẩm nội bộ (tạm, chờ API chính thức)',
@@ -85,13 +86,31 @@ export function useSetMiniAppId() {
   })
 }
 
+export interface NguonInfo {
+  source: CrmProductSource
+  /** Nguồn quản trị đã chọn; null = đang theo cấu hình máy chủ. */
+  chosenSource: CrmProductSource | null
+  envSource: CrmProductSource
+  sources: CrmProductSource[]
+  dashboardConfigured: boolean
+  officialConfigured: boolean
+  /** Mẫu link Mini App, chứa {miniapp}/{code}/{id}. Rỗng = chưa cấu hình. */
+  miniAppUrlTemplate: string
+  canEdit: boolean
+}
+
+/** Đổi nguồn sản phẩm. `null` = bỏ lựa chọn, quay về cấu hình máy chủ. */
+export function useSetProductSource() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (source: CrmProductSource | null) =>
+      (await api.put('/crm-products/source', { source })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm-products'] }),
+  })
+}
+
 export function useCrmProductSource() {
-  return useQuery<{
-    source: CrmProductSource
-    dashboardConfigured: boolean
-    /** Mẫu link Mini App, chứa {code}/{id}. Rỗng = chưa cấu hình. */
-    miniAppUrlTemplate: string
-  }>({
+  return useQuery<NguonInfo>({
     queryKey: ['crm-products', 'source'],
     queryFn: async () => (await api.get('/crm-products/source')).data,
     staleTime: 5 * 60_000,

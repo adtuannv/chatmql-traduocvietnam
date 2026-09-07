@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { BackfillAccountButton, BackfillProgressLine } from './backfill-account-button'
 import { toast } from 'sonner'
 import dayjs from 'dayjs'
 import { MessageCircle, Plus, RefreshCw, LogIn, Unplug, Loader2 } from 'lucide-react'
@@ -116,11 +117,13 @@ export function ZaloPersonalTab() {
                     {acc.lastConnectedAt
                       ? `Kết nối lần cuối ${dayjs(acc.lastConnectedAt).format('DD/MM/YYYY HH:mm')}`
                       : 'Chưa từng kết nối'}
+                    <BackfillProgressLine accountId={acc.id} />
                   </>
                 }
                 status={statusMeta(st, acc.isDisabled)}
                 actions={
                   <>
+                    {isConnected && <BackfillAccountButton accountId={acc.id} />}
                     {!isConnected && (
                       <>
                         <Button

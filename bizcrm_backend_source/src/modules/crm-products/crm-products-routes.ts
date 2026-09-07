@@ -6,13 +6,21 @@ import type { FastifyInstance } from 'fastify'
 import { authMiddleware } from '../auth/auth-middleware.js'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../../shared/prisma-client.js'
-import { searchCrmProducts, listCrmProducts, resolveSource } from './crm-products-client.js'
+import {
+  searchCrmProducts, listCrmProducts, resolveSource, resolveSourceFor,
+  nguonDaChon, luuNguon, CAC_NGUON, type CrmProductSource,
+} from './crm-products-client.js'
 
 type NguoiDung = { orgId: string; role: string }
 
 /** Chỉ người quản lý mới được sửa ánh xạ — gửi nhầm link là gửi nhầm cho khách. */
 function duocSua(role: string): boolean {
   return ['owner', 'admin', 'manager'].includes(role)
+}
+
+/** Đổi nguồn ảnh hưởng toàn tổ chức nên hẹp hơn: chỉ chủ và quản trị. */
+function canEditSource(role: string): boolean {
+  return ['owner', 'admin'].includes(role)
 }
 
 export async function crmProductRoutes(app: FastifyInstance): Promise<void> {
@@ -25,11 +33,50 @@ export async function crmProductRoutes(app: FastifyInstance): Promise<void> {
    * (và `{id}` cho hệ thống đánh số thay vì mã). Chưa cấu hình thì trả rỗng để
    * giao diện khoá nút gửi — thà không gửi còn hơn gửi khách một link hỏng.
    */
-  app.get('/api/v1/crm-products/source', async () => ({
-    source: resolveSource(),
-    dashboardConfigured: !!process.env.CRM_DASHBOARD_TOKEN,
-    miniAppUrlTemplate: process.env.ZALO_MINIAPP_PRODUCT_URL || '',
-  }))
+  app.get('/api/v1/crm-products/source', async (request) => {
+    const u = request.user as NguoiDung
+    return {
+      source: await resolveSourceFor(u.orgId),
+      /** Nguồn quản trị đã chọn; null = đang theo cấu hình máy chủ. */
+      chosenSource: await nguonDaChon(u.orgId),
+      envSource: resolveSource(),
+      sources: CAC_NGUON,
+      dashboardConfigured: !!process.env.CRM_DASHBOARD_TOKEN,
+      officialConfigured: !!(process.env.FM_PRODUCT_API_URL && process.env.FM_PRODUCT_API_KEY),
+      miniAppUrlTemplate: process.env.ZALO_MINIAPP_PRODUCT_URL || '',
+      canEdit: canEditSource(u.role),
+    }
+  })
+
+  /**
+   * Đổi nguồn sản phẩm ngay trong giao diện.
+   *
+   * Trước đây phải sửa tệp cấu hình rồi khởi động lại máy chủ — chỉ kỹ thuật
+   * làm được, trong khi đây là quyết định vận hành. Từ chối nguồn chưa đủ cấu
+   * hình thay vì nhận rồi để danh sách trống mà không rõ lý do.
+   */
+  app.put<{ Body: { source: string | null } }>('/api/v1/crm-products/source', async (request, reply) => {
+    const u = request.user as NguoiDung
+    if (!canEditSource(u.role)) return reply.status(403).send({ error: 'Không có quyền đổi nguồn sản phẩm' })
+
+    const nguon = request.body?.source
+    if (nguon === null || nguon === '') {
+      await luuNguon(u.orgId, '' as CrmProductSource).catch(() => {})
+      return { source: await resolveSourceFor(u.orgId), chosenSource: null }
+    }
+    if (!CAC_NGUON.includes(nguon as CrmProductSource)) {
+      return reply.status(400).send({ error: `Nguồn không hợp lệ. Chọn một trong: ${CAC_NGUON.join(', ')}` })
+    }
+    if (nguon === 'official' && !(process.env.FM_PRODUCT_API_URL && process.env.FM_PRODUCT_API_KEY)) {
+      return reply.status(400).send({ error: 'Chưa cấu hình địa chỉ và khoá của hệ thống sản phẩm chính thức trên máy chủ' })
+    }
+    if (nguon === 'dashboard' && !process.env.CRM_DASHBOARD_TOKEN) {
+      return reply.status(400).send({ error: 'Chưa cấu hình token dashboard CRM trên máy chủ' })
+    }
+
+    await luuNguon(u.orgId, nguon as CrmProductSource)
+    return { source: await resolveSourceFor(u.orgId), chosenSource: nguon }
+  })
 
   /** Danh sách để duyệt — không cần gõ từ khoá. */
   app.get<{
@@ -93,7 +140,7 @@ export async function crmProductRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const u = request.user as NguoiDung
       if (!duocSua(u.role)) return reply.status(403).send({ error: 'Không có quyền sửa ánh xạ Mini App' })
-      if (resolveSource() !== 'local') {
+      if ((await resolveSourceFor(u.orgId)) !== 'local') {
         return reply.status(400).send({
           error: 'Nguồn sản phẩm hiện không phải bảng nội bộ nên chưa lưu được ánh xạ ở đây',
         })
