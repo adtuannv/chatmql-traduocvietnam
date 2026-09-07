@@ -13,19 +13,35 @@
  *       ├─ Trà cụ
  *       └─ Phụ kiện
  *
- * NGUYÊN TẮC QUAN TRỌNG NHẤT: script chỉ ĐIỀN VÀO CHỖ TRỐNG, không bao giờ ghi
- * đè thứ người thật đã soạn. Mô tả bán hàng và bộ ảnh là công sức của đội sale;
- * một lần chạy lại mà xoá mất chúng thì không ai dám chạy script này nữa.
+ * Ghi vào HAI bảng, và phải đủ cả hai:
+ *   • `product_docs` — lớp dữ liệu của ChatMQL, hiện ở màn Sản phẩm CRM.
+ *   • `doc_assets`   — thứ thư viện tài liệu bán hàng thật sự liệt kê.
+ * Lần chạy đầu chỉ ghi bảng thứ nhất, kết quả là cây thư mục dựng lên đẹp đẽ
+ * nhưng mở vào trống trơn.
+ *
+ * MẶC ĐỊNH CHỈ ĐIỀN VÀO CHỖ TRỐNG, không ghi đè thứ người thật đã soạn. Mô tả
+ * bán hàng và bộ ảnh là công sức của đội sale; một lần chạy lại mà xoá mất
+ * chúng thì không ai dám chạy script này nữa. Muốn kéo lại từ nguồn thì phải
+ * nói rõ bằng `--ghi-de`.
  *
  * Cách dùng:
  *   yarn tsx scripts/backfill-doc-library.ts             # xem trước, KHÔNG ghi
  *   yarn tsx scripts/backfill-doc-library.ts --apply     # ghi thật
  *   yarn tsx scripts/backfill-doc-library.ts --org=<id>  # chỉ định tổ chức
+ *   yarn tsx scripts/backfill-doc-library.ts --apply --ghi-de   # kéo lại từ nguồn
  */
 import { prisma } from '../src/shared/prisma-client.js'
 import { listCrmProducts, type CrmProduct } from '../src/modules/crm-products/crm-products-client.js'
 
 const APPLY = process.argv.includes('--apply')
+/**
+ * Cho phép ghi đè mô tả và ảnh bằng dữ liệu mới từ hệ thống nguồn.
+ *
+ * Mặc định TẮT vì mô tả bán hàng là công sức đội sale soạn tay. Bật khi bên
+ * nguồn đã bổ sung nội dung và mình muốn kéo bản mới về — chấp nhận mất phần
+ * sửa tay, đó là đánh đổi có ý thức chứ không phải tai nạn.
+ */
+const GHI_DE = process.argv.includes('--ghi-de') || process.argv.includes('--overwrite')
 const ORG_ARG = process.argv.find((a) => a.startsWith('--org='))?.slice(6)
 
 /**
@@ -51,6 +67,8 @@ type ThongKe = {
   dienMoTa: number
   dienAnh: number
   dienMiniApp: number
+  taiNguyenTao: number
+  taiNguyenCapNhat: number
 }
 
 /**
@@ -113,6 +131,50 @@ function xepTheoSoLuong(m: Map<string, unknown>): [string, unknown][] {
   return [...m.entries()].sort((a, b) => dem(b[1]) - dem(a[1]))
 }
 
+/**
+ * Ghi tài nguyên loại `product` — đây mới là thứ hiện trong thư viện tài liệu.
+ *
+ * Khớp theo `sourceId` chứ không theo tiêu đề: tên sản phẩm bên nguồn đổi lúc
+ * nào cũng được, còn mã thì không, nên chạy lại vẫn nhận ra đúng bản ghi cũ.
+ */
+async function ghiTaiNguyen(
+  orgId: string,
+  p: CrmProduct,
+  ma: string,
+  folderId: string,
+  moTa: string | null,
+  anh: string[],
+  tk: ThongKe,
+): Promise<void> {
+  const sourceId = `fm-product:${ma}`
+  const dangCo = await prisma.docAsset.findFirst({
+    where: { orgId, sourceId },
+    select: { id: true, description: true, images: true, folderId: true },
+  })
+
+  if (!dangCo) {
+    tk.taiNguyenTao++
+    if (APPLY) {
+      await prisma.docAsset.create({
+        data: {
+          orgId, sourceId, folderId, kind: 'product', visibility: 'sales',
+          title: p.name, description: moTa, images: anh,
+          productCodes: [ma],
+        },
+      })
+    }
+    return
+  }
+
+  const them: Record<string, unknown> = { title: p.name }
+  if (!dangCo.folderId) them.folderId = folderId
+  if (moTa && (GHI_DE || !dangCo.description)) them.description = moTa
+  if (anh.length && (GHI_DE || !dangCo.images.length)) them.images = anh
+
+  tk.taiNguyenCapNhat++
+  if (APPLY) await prisma.docAsset.update({ where: { id: dangCo.id }, data: them })
+}
+
 async function main() {
   const org = ORG_ARG
     ? await prisma.organization.findUnique({ where: { id: ORG_ARG }, select: { id: true, name: true } })
@@ -120,6 +182,7 @@ async function main() {
   if (!org) throw new Error('Không tìm thấy tổ chức nào. Truyền --org=<id>.')
 
   console.log(`\nTổ chức: ${org.name} (${org.id})`)
+  console.log(GHI_DE ? '⚠️  GHI ĐÈ: mô tả và ảnh sẽ bị thay bằng dữ liệu nguồn.\n' : '')
   console.log(APPLY ? 'Chế độ: GHI THẬT\n' : 'Chế độ: xem trước — không ghi gì. Thêm --apply để ghi.\n')
 
   const kq = await listCrmProducts({ orgId: org.id, pageSize: 200 })
@@ -134,6 +197,7 @@ async function main() {
   const tk: ThongKe = {
     thuMucTao: 0, docTao: 0, docCapNhat: 0, docGiuNguyen: 0,
     boQuaThieuMa: 0, dienMoTa: 0, dienAnh: 0, dienMiniApp: 0,
+    taiNguyenTao: 0, taiNguyenCapNhat: 0,
   }
 
   const cay = nhomTheoCay(kq.products)
@@ -167,9 +231,14 @@ async function main() {
 
         const them: Record<string, unknown> = {}
         if (!dangCo?.folderId) them.folderId = idLoai
-        if (!dangCo?.description && moTa) { them.description = moTa; tk.dienMoTa++ }
-        if (!dangCo?.images?.length && anh.length) { them.images = anh; tk.dienAnh++ }
+        if (moTa && (GHI_DE || !dangCo?.description)) { them.description = moTa; tk.dienMoTa++ }
+        if (anh.length && (GHI_DE || !dangCo?.images?.length)) { them.images = anh; tk.dienAnh++ }
         if (!dangCo?.miniAppId) { them.miniAppId = miniApp; tk.dienMiniApp++ }
+
+        // Thư viện tài liệu bán hàng liệt kê doc_assets, KHÔNG phải product_docs.
+        // Thiếu bước này thì thư mục dựng ra nhưng mở vào trống trơn — đúng cái
+        // đã xảy ra lần chạy đầu. `sourceId` là khoá chống trùng khi chạy lại.
+        await ghiTaiNguyen(org.id, p, ma, idLoai, moTa, anh, tk)
 
         if (!dangCo) {
           tk.docTao++
@@ -203,6 +272,8 @@ async function main() {
   console.log(`  ├─ điền mô tả        : ${tk.dienMoTa}`)
   console.log(`  ├─ điền ảnh          : ${tk.dienAnh}`)
   console.log(`  └─ điền mã Mini App  : ${tk.dienMiniApp}`)
+  console.log(`Tài nguyên tạo mới     : ${tk.taiNguyenTao}`)
+  console.log(`Tài nguyên cập nhật    : ${tk.taiNguyenCapNhat}`)
   if (tk.boQuaThieuMa) console.log(`Bỏ qua (không có mã)   : ${tk.boQuaThieuMa}`)
   console.log('─'.repeat(52))
   console.log(APPLY ? '\nĐã ghi xong.\n' : '\nChưa ghi gì. Chạy lại với --apply để ghi thật.\n')
