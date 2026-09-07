@@ -23,7 +23,6 @@ import { FEATURES } from '@/lib/features'
 import { cn, initials } from '@/lib/utils'
 import { getSocket } from '@/lib/socket'
 import { useCrmPanelStore } from '@/stores/crm-panel-store'
-import { BackfillHistoryButton } from './backfill-button'
 import {
   useChatRealtime,
   useConversation,
@@ -644,9 +643,6 @@ export function ChatPanel({ convId }: { convId: string }) {
           >
             <Images className="h-4 w-4" />
           </Button>
-
-          {/* Kéo thêm lịch sử tin nhắn cũ từ Zalo (TDVN) */}
-          <BackfillHistoryButton convId={convId} />
 
           {/* Chế độ AI — gồm cả tạm dừng AI */}
           <DropdownMenu>

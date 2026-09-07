@@ -3,7 +3,8 @@
  *
  * Port từ `zalo-history-bridge.js` (bản vá DOM cũ) sang hook TanStack Query +
  * Socket.IO. Endpoint theo `bizcrm_backend_source/src/modules/zalo/zalo-routes.ts`
- * và `modules/chat/chat-routes.ts` (POST /conversations/:id/backfill).
+ * Kéo lịch sử nay chỉ làm theo TÀI KHOẢN ở màn Tích hợp; endpoint theo từng
+ * hội thoại vẫn còn ở máy chủ nhưng giao diện không dùng nữa.
  *
  * Tiến độ kéo lịch sử được backend phát vào phòng `org:{orgId}` qua sự kiện
  * `zalo:backfill-progress` (server tự join phòng org lúc kết nối, client không
@@ -20,16 +21,6 @@ export { useZaloAccounts, statusMeta, type ChannelAccount } from '@/hooks/use-in
 // ─────────────────────────────────────────────────────────────────────────────
 // Kiểu dữ liệu
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Kết quả POST /conversations/:id/backfill (kéo lịch sử 1 hội thoại — chạy đồng bộ). */
-export interface ConversationBackfillResult {
-  success: boolean
-  convId: string
-  displayName: string | null
-  inserted: number
-  skipped: number
-  total: number
-}
 
 /** Kết quả POST /zalo-accounts/:id/backfill (chạy nền, theo dõi qua socket). */
 export interface AccountBackfillResult {
@@ -97,25 +88,6 @@ const ZALO_ACCOUNTS_KEY = ['integrations', 'zalo-accounts'] as const
 // Mutation
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Kéo tin nhắn cũ cho MỘT hội thoại. Không kích hoạt AI (chỉ ghi DB). */
-export function useBackfillConversation() {
-  const qc = useQueryClient()
-  return useMutation<ConversationBackfillResult, unknown, { convId: string; maxMessages?: number }>({
-    mutationFn: async ({ convId, maxMessages = 200 }) => {
-      const { data } = await api.post<ConversationBackfillResult>(`/conversations/${convId}/backfill`, {
-        maxMessages,
-      })
-      return data
-    },
-    onSuccess: (_res, vars) => {
-      // Trùng khoá với use-conversations.ts (keys.messages / conversations).
-      qc.invalidateQueries({ queryKey: ['conversation-messages', vars.convId] })
-      qc.invalidateQueries({ queryKey: ['conversations'] })
-    },
-  })
-}
-
-/** Kéo lịch sử TOÀN BỘ hội thoại của một tài khoản (chạy nền). */
 export function useBackfillAccount() {
   const qc = useQueryClient()
   return useMutation<
