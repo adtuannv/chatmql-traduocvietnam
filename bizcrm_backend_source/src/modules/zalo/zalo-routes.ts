@@ -18,6 +18,46 @@ export async function zaloRoutes(app: FastifyInstance): Promise<void> {
   // GET /api/v1/zalo-accounts — list accounts (soft-deleted ones are hidden)
   // Optional ?type=personal|oa filters by account type.
   // Optional ?includeDisabled=true to include disabled accounts.
+  /**
+   * Đánh dấu tài khoản Zalo là Business (Pro) hay thường.
+   *
+   * Zalo Business có hạn mức gửi và tính năng khác tài khoản thường, nên đội
+   * vận hành cần nhìn là biết nick nào dùng được việc gì — trước đó dữ liệu có
+   * sẵn trong cơ sở dữ liệu nhưng không chỗ nào hiện ra, cũng không sửa được.
+   *
+   * Chỉ áp cho Zalo cá nhân: OA là loại tài khoản khác, không có khái niệm này.
+   */
+  app.patch<{ Params: { id: string }; Body: { isBusiness?: boolean; businessTier?: string | null } }>(
+    '/api/v1/zalo-accounts/:id/business',
+    async (request, reply) => {
+      const user = request.user as { orgId: string; role: string }
+      if (user.role !== 'owner' && user.role !== 'admin') {
+        return reply.code(403).send({ message: 'Chỉ quản trị mới đổi được đánh dấu này' })
+      }
+
+      const acc = await prisma.channelAccount.findFirst({
+        where: { id: request.params.id, orgId: user.orgId, deletedAt: null },
+        select: { id: true, platform: true },
+      })
+      if (!acc) return reply.code(404).send({ message: 'Không tìm thấy tài khoản' })
+      if (acc.platform !== Platform.ZALO_USER) {
+        return reply.code(400).send({ message: 'Chỉ đánh dấu được cho tài khoản Zalo cá nhân' })
+      }
+
+      const isBusiness = request.body.isBusiness ?? false
+      // Hạ về tài khoản thường thì xoá luôn hạng: giữ lại "pro" trên một nick
+      // không còn là business chỉ gây hiểu nhầm về sau.
+      const tier = isBusiness ? (request.body.businessTier?.trim() || 'pro') : null
+
+      const updated = await prisma.channelAccount.update({
+        where: { id: acc.id },
+        data: { isBusiness, businessTier: tier },
+        select: { id: true, isBusiness: true, businessTier: true },
+      })
+      return updated
+    },
+  )
+
   app.get<{ Querystring: { type?: 'personal' | 'oa'; includeDisabled?: string } }>('/api/v1/zalo-accounts', async (request) => {
     const user = request.user as { orgId: string; id: string; role: string }
     const typeFilter = request.query.type
@@ -46,6 +86,8 @@ export async function zaloRoutes(app: FastifyInstance): Promise<void> {
         avatarUrl: true,
         phone: true,
         status: true,
+        isBusiness: true,
+        businessTier: true,
         isDisabled: true,
         lastConnectedAt: true,
         createdAt: true,

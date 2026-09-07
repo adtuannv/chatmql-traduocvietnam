@@ -23,11 +23,15 @@ import {
   statusMeta,
   type ChannelAccount,
 } from '@/hooks/use-integrations'
+import { useAuthStore } from '@/stores/auth-store'
 import { ChannelCard } from './channel-card'
+import { BusinessSwitch } from './business-badge'
 import { QrLoginDialog } from './qr-login-dialog'
 
 export function ZaloPersonalTab() {
   const { data, isLoading, isError } = useZaloAccounts('personal')
+  const role = useAuthStore((s) => s.user?.role)
+  const suaDuoc = role === 'owner' || role === 'admin'
   const connect = useConnectZalo()
   const login = useZaloLogin()
   const reconnect = useZaloReconnect()
@@ -113,6 +117,11 @@ export function ZaloPersonalTab() {
                 title={acc.displayName || acc.phone || 'Tài khoản Zalo'}
                 subtitle={
                   <>
+                    {/* Business hay thường quyết định hạn mức gửi, nên để ngay
+                        dòng đầu chứ không giấu trong menu. */}
+                    <span className="mr-1.5 inline-flex translate-y-[1px] align-middle">
+                      <BusinessSwitch acc={acc} canEdit={suaDuoc} />
+                    </span>
                     {acc.phone ? `${acc.phone} · ` : ''}
                     {acc.lastConnectedAt
                       ? `Kết nối lần cuối ${dayjs(acc.lastConnectedAt).format('DD/MM/YYYY HH:mm')}`

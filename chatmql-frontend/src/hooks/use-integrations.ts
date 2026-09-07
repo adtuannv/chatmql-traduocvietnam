@@ -39,6 +39,10 @@ export interface ChannelAccount {
   avatarUrl: string | null
   phone: string | null
   status: ChannelStatus | null
+  /** Zalo Business — hạn mức gửi và tính năng khác tài khoản thường. */
+  isBusiness: boolean
+  /** Hạng business, ví dụ `pro`. Rỗng khi không phải business. */
+  businessTier: string | null
   isDisabled: boolean
   lastConnectedAt: string | null
   createdAt: string
@@ -82,6 +86,19 @@ export const zaloAccountsKey = (type?: 'personal' | 'oa', connectedOnly?: boolea
  * - `type='oa'`       → Zalo OA (platform 1)
  * - bỏ trống          → tất cả kênh (dùng để lọc Facebook phía client)
  */
+/** Đánh dấu một nick Zalo cá nhân là Business (Pro) hay tài khoản thường. */
+export function useSetZaloBusiness() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (v: { id: string; isBusiness: boolean; businessTier?: string | null }) =>
+      (await api.patch(`/zalo-accounts/${v.id}/business`, {
+        isBusiness: v.isBusiness,
+        businessTier: v.businessTier,
+      })).data,
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['integrations', 'zalo-accounts'] }) },
+  })
+}
+
 export function useZaloAccounts(type?: 'personal' | 'oa', connectedOnly = false) {
   return useQuery<ChannelAccount[]>({
     queryKey: zaloAccountsKey(type, connectedOnly),
