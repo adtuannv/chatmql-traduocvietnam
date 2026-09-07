@@ -426,6 +426,9 @@ model Conversation {
   isPinned                 Boolean   @default(false) @map("is_pinned")
   displayName              String?   @map("display_name") // Original name on this channel — survives contact merge
   aiMode                   String    @default("manual") @map("ai_mode") // manual, auto, suggest (AI auto-reply mode)
+  // Ghi đè luật "chỉ trả lời khi nhắc tên" cho riêng hội thoại này.
+  // null = theo cài đặt chung của tổ chức; true/false = quyết định tại đây.
+  requireMention     Boolean? @map("require_mention")
   aiModeReason             String?   @map("ai_mode_reason")
   aiPausedUntil            DateTime? @map("ai_paused_until")
   assignedUserId           String?   @map("assigned_user_id") // handoff assignee (soft ref to User)

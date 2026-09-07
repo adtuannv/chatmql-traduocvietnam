@@ -298,6 +298,7 @@ export async function handleIncomingMessage(
           noiDung: msg.content ?? '',
           batLuat: aiReplyCfg.groupRequireMention,
           tenTuDat: aiReplyCfg.mentionNames,
+          ghiDe: conversation.requireMention,
         })
 
         if (
@@ -660,7 +661,7 @@ async function findOrCreateConversation(
   const existing = await prisma.conversation.findFirst({
     where: { channelAccountId: msg.accountId, externalThreadId },
     // threadType: luật "chỉ trả lời khi được nhắc tên" chỉ áp cho nhóm.
-    select: { id: true, displayName: true, aiMode: true, aiModeReason: true, aiPausedUntil: true, threadType: true },
+    select: { id: true, displayName: true, aiMode: true, aiModeReason: true, aiPausedUntil: true, threadType: true, requireMention: true },
   })
 
   if (existing) {
@@ -697,7 +698,7 @@ async function findOrCreateConversation(
       isReplied: msg.isSelf,
       aiMode: defaultAiMode,
     },
-    select: { id: true, aiMode: true, aiModeReason: true, aiPausedUntil: true, threadType: true },
+    select: { id: true, aiMode: true, aiModeReason: true, aiPausedUntil: true, threadType: true, requireMention: true },
   })
 }
 

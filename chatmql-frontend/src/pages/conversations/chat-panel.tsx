@@ -39,6 +39,7 @@ import {
   type AiMode,
   type ChatMessage,
   useGroupMembers,
+  useSetRequireMention,
 } from '@/hooks/use-conversations'
 import { MessageBubble, type MessageActions } from './message-bubble'
 import { ForwardDialog } from './forward-dialog'
@@ -110,6 +111,7 @@ export function ChatPanel({ convId }: { convId: string }) {
   const sendMessage = useSendMessage(convId)
   const setAiMode = useSetAiMode(convId)
   const setAiPause = useSetAiPause(convId)
+  const setRequireMention = useSetRequireMention(convId)
   const togglePin = useTogglePin()
   const markUnread = useMarkUnread()
   const reactMessage = useReactMessage(convId)
@@ -510,6 +512,21 @@ export function ChatPanel({ convId }: { convId: string }) {
     }
   }
 
+  /** 'chung' = bỏ ghi đè, trả về theo cài đặt chung của tổ chức. */
+  async function handleRequireMention(v: string) {
+    const gia_tri = v === 'chung' ? null : v === 'bat'
+    try {
+      await setRequireMention.mutateAsync(gia_tri)
+      toast.success(
+        gia_tri === null ? 'Nhóm này theo cài đặt chung'
+          : gia_tri ? 'Nhóm này chỉ trả lời khi được nhắc tên'
+            : 'Nhóm này trả lời mọi tin',
+      )
+    } catch (err) {
+      toast.error(apiError(err))
+    }
+  }
+
   async function handlePause(minutes: number) {
     try {
       await setAiPause.mutateAsync(minutes)
@@ -672,6 +689,31 @@ export function ChatPanel({ convId }: { convId: string }) {
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
+
+              {/* Chỉ nhóm mới có ý nghĩa: hội thoại một-một thì mọi câu đều là
+                  nói với mình, bắt khách gõ tên bot mới trả lời là vô lý. */}
+              {isGroup && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                    Chỉ trả lời khi được nhắc tên
+                  </DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={conv?.requireMention == null ? 'chung' : conv.requireMention ? 'bat' : 'tat'}
+                    onValueChange={(v) => handleRequireMention(v)}
+                  >
+                    <DropdownMenuRadioItem value="chung" className="text-sm">
+                      Theo cài đặt chung
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="bat" className="text-sm">
+                      Bật cho nhóm này
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="tat" className="text-sm">
+                      Tắt cho nhóm này
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </>
+              )}
 
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">

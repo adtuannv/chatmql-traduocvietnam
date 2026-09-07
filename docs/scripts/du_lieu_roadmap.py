@@ -87,7 +87,7 @@ CHECKLIST = [
     ('Tài liệu bán hàng', 'Nội dung', 'Nhập tư liệu từ Google Drive của công ty', 'Chưa bắt đầu', '', 'Cần chốt cách ánh xạ thư mục sang mã sản phẩm'),
     ('AI', 'Trả lời khách', 'Ba chế độ Tự động · Gợi ý · Tắt', 'Xong', '', ''),
     ('AI', 'Trả lời khách', 'Tạm dừng AI theo mốc phút', 'Xong', '', ''),
-    ('AI', 'Trả lời khách', 'Nhóm: chỉ trả lời khi được nhắc tên', 'Xong', '', 'Bật/tắt ở Cài đặt AI; nhận cả tag @Tên lẫn gọi tên trần, không phân biệt dấu'),
+    ('AI', 'Trả lời khách', 'Nhóm: chỉ trả lời khi được nhắc tên', 'Xong', '', 'Cài đặt AI đặt chung; menu Chế độ AI ở từng nhóm ghi đè được và thắng cài đặt chung'),
     ('AI', 'Trả lời khách', 'Đội bot, mỗi bot có tính cách và kịch bản', 'Xong', '', ''),
     ('AI', 'Ngữ cảnh', 'Đọc kiến thức chung và hồ sơ khách', 'Xong', '', ''),
     ('AI', 'Ngữ cảnh', 'Đọc tài liệu bán hàng khi tư vấn', 'Xong', '', ''),

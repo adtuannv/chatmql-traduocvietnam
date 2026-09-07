@@ -73,8 +73,13 @@ export async function duocPhepTraLoi(input: {
   noiDung: string
   batLuat: boolean
   tenTuDat: string | null
+  /** Ghi đè cho riêng hội thoại này; null = theo cài đặt chung. */
+  ghiDe?: boolean | null
 }): Promise<{ duoc: boolean; lyDo?: string }> {
-  if (!input.laNhom || !input.batLuat) return { duoc: true }
+  // Đặt tại hội thoại thì thắng cài đặt chung: người trực nhóm biết rõ nhóm đó
+  // cần gì hơn là một công tắc áp cho toàn tổ chức.
+  const batLuat = input.ghiDe ?? input.batLuat
+  if (!input.laNhom || !batLuat) return { duoc: true }
 
   const ten = await layTenGoi(input.orgId, input.tenTuDat)
   // Không có tên nào để nhận biết thì luật vô nghĩa — thà trả lời còn hơn câm

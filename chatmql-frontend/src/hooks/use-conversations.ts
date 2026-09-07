@@ -87,6 +87,8 @@ export interface ConversationListItem {
 export interface ConversationDetail extends ConversationListItem {
   aiModeReason?: string | null
   aiPausedUntil?: string | null
+  /** Ghi đè luật "chỉ trả lời khi nhắc tên" cho nhóm này; null = theo cài đặt chung. */
+  requireMention?: boolean | null
   externalThreadId?: string | null
   threadType?: string
   /** Ai đã xem tới đâu (từ sự kiện seen của Zalo): uid → mốc tin mới nhất đã xem. */
@@ -613,6 +615,27 @@ export function useSetAiPause(id: string) {
 }
 
 // ── Đổi chế độ AI (manual | auto | suggest) ─────────────────────────
+/**
+ * Đặt luật nhắc tên cho riêng hội thoại này.
+ *
+ * `null` trả về theo cài đặt chung — người trực nhóm cần bỏ được ghi đè chứ
+ * không chỉ bật/tắt, nếu không thì lỡ đặt là mắc kẹt với giá trị đó mãi.
+ */
+export function useSetRequireMention(id: string) {
+  const qc = useQueryClient()
+  return useMutation<{ requireMention: boolean | null }, unknown, boolean | null>({
+    mutationFn: async (requireMention) => {
+      const { data } = await api.patch<{ requireMention: boolean | null }>(
+        `/conversations/${id}/require-mention`, { requireMention })
+      return data
+    },
+    onSuccess: (data) => {
+      qc.setQueryData<ConversationDetail>(keys.detail(id), (prev) =>
+        prev ? { ...prev, requireMention: data.requireMention } : prev)
+    },
+  })
+}
+
 export function useSetAiMode(id: string) {
   const qc = useQueryClient()
   return useMutation<{ aiMode: AiMode }, unknown, AiMode>({

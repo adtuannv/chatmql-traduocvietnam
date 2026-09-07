@@ -483,6 +483,49 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, action, forwarded: forward.forwarded, ...(reason ? { reason } : {}) }
   })
 
+  /**
+   * Ghi đè luật "chỉ trả lời khi nhắc tên" cho riêng một hội thoại.
+   *
+   * `null` = trả về theo cài đặt chung của tổ chức. Người trực một nhóm biết rõ
+   * nhóm đó cần gì hơn là một công tắc áp cho toàn tổ chức, nên giá trị đặt ở
+   * đây thắng cài đặt chung.
+   */
+  app.patch<{
+    Params: { id: string }
+    Body: { requireMention: boolean | null }
+  }>('/api/v1/conversations/:id/require-mention', async (request, reply) => {
+    const user = request.user as { orgId: string; id: string }
+    const gia_tri = request.body?.requireMention
+    if (gia_tri !== null && typeof gia_tri !== 'boolean') {
+      return reply.status(400).send({ error: 'requireMention phải là true, false hoặc null' })
+    }
+
+    const conv = await prisma.conversation.findFirst({
+      where: { id: request.params.id, orgId: user.orgId },
+      select: { id: true, requireMention: true },
+    })
+    if (!conv) return reply.status(404).send({ error: 'Conversation not found' })
+
+    const updated = await prisma.conversation.update({
+      where: { id: conv.id },
+      data: { requireMention: gia_tri },
+      select: { id: true, requireMention: true },
+    })
+
+    prisma.activityLog.create({
+      data: {
+        orgId: user.orgId,
+        userId: user.id,
+        action: 'conversation.require_mention_changed',
+        entityType: 'Conversation',
+        entityId: conv.id,
+        details: { from: conv.requireMention, to: gia_tri, by: user.id },
+      },
+    }).catch(err => logger.error({ err }, '[chat] activityLog create failed'))
+
+    return { convId: updated.id, requireMention: updated.requireMention }
+  })
+
   // ── AI mode toggle ──────────────────────────────────────────────
   const VALID_AI_MODES = new Set(['manual', 'suggest', 'auto'])
 
