@@ -145,3 +145,79 @@ lược đồ cơ sở dữ liệu và những chỗ đổi hành vi nằm ở
 
 Việc 1 ở trên **không phụ thuộc** vào lần deploy này. Sửa nginx được ngay, không
 cần chờ gộp nhánh.
+
+---
+
+## Việc 4 — Chạy script dựng cây tài liệu bán hàng trên prod
+
+Script `scripts/backfill-doc-library.ts` đọc danh mục sản phẩm từ hệ thống nguồn
+rồi dựng cây thư mục tài liệu bán hàng hai tầng (thương hiệu → loại), và tạo
+tài liệu cho từng sản phẩm.
+
+Chạy trên local đã ra: 25 thư mục, 51 tài liệu mới, 33 tài liệu bổ sung.
+
+### Tính chất cần biết trước khi chạy
+
+- **Chỉ thêm, không bao giờ xoá.** Không có lệnh delete nào trong script.
+- **Không ghi đè nội dung người thật đã soạn.** Mô tả, ảnh, mã Mini App đã có
+  thì giữ nguyên; chỉ điền vào ô đang trống.
+- **Chạy lại bao nhiêu lần cũng được.** Lần hai trở đi không đổi gì.
+- **Mặc định là xem trước.** Không có `--apply` thì không ghi một dòng nào.
+
+### Các bước
+
+**1. Kiểm tra `.env` có cấu hình nguồn sản phẩm.** Thiếu là script lấy nhầm
+nguồn và dựng ra cây sai:
+
+```bash
+grep -E "CRM_PRODUCT_SOURCE|FM_PRODUCT_API" .env
+```
+
+Cần thấy `CRM_PRODUCT_SOURCE=official` cùng `FM_PRODUCT_API_URL` và
+`FM_PRODUCT_API_KEY`. Thiếu thì lấy từ máy phát triển sang.
+
+**2. Lấy id tổ chức.** Prod có thể nhiều tổ chức; không truyền `--org` thì
+script lấy tổ chức tạo sớm nhất, chưa chắc đúng cái mình muốn:
+
+```bash
+psql "$DATABASE_URL" -c "select id, name from organizations order by created_at;"
+```
+
+**3. Sao lưu hai bảng sẽ bị ghi.** Rẻ và cho phép quay lui:
+
+```bash
+psql "$DATABASE_URL" -c "create table product_docs_bak as select * from product_docs; create table doc_folders_bak as select * from doc_folders;"
+```
+
+**4. Chạy xem trước — chưa ghi gì:**
+
+```bash
+npx tsx scripts/backfill-doc-library.ts --org=<id-tổ-chức>
+```
+
+Đọc kỹ phần tổng kết ở cuối. Số "Tài liệu tạo mới" phải xấp xỉ số sản phẩm bên
+hệ thống nguồn. Nếu ra 0 hết thì nguồn sản phẩm đang sai — quay lại bước 1.
+
+**5. Ghi thật:**
+
+```bash
+npx tsx scripts/backfill-doc-library.ts --org=<id-tổ-chức> --apply
+```
+
+### Nghiệm thu
+
+Mở giao diện **Tài liệu bán hàng**, phải thấy cây thư mục theo thương hiệu:
+Trà · Trà cụ & phụ kiện trà · Bánh ăn cùng trà · Trà dược. Bấm vào một thư mục
+con phải thấy sản phẩm bên trong.
+
+### Quay lui nếu cần
+
+```bash
+psql "$DATABASE_URL" -c "truncate product_docs; insert into product_docs select * from product_docs_bak; truncate doc_folders cascade; insert into doc_folders select * from doc_folders_bak;"
+```
+
+Xong việc và thấy ổn thì xoá hai bảng sao lưu:
+
+```bash
+psql "$DATABASE_URL" -c "drop table product_docs_bak, doc_folders_bak;"
+```
