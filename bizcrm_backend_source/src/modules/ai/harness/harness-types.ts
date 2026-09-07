@@ -45,6 +45,24 @@ export interface ProductDocSnippet {
   description: string | null
   imageCount: number
   videoCount: number
+  /** Link Mini App gửi được cho khách. Rỗng = sản phẩm chưa ghép mã. */
+  miniAppUrl: string | null
+}
+
+/**
+ * L1d — tài liệu trong thư viện bán hàng: biểu giá, ảnh sản phẩm, tài liệu tư
+ * vấn. Đây là nơi đội sale bỏ công soạn nhiều nhất, nên phải cho AI đọc — trước
+ * đó chỉ trợ lý nội bộ dùng được, còn bot trả lời khách thì không thấy gì.
+ */
+export interface DocAssetSnippet {
+  id: string
+  kind: string
+  title: string
+  description: string | null
+  textContent: string | null
+  productCodes: string[]
+  /** Có tệp/ảnh/video gửi khách được không. */
+  sendable: boolean
 }
 
 /** L1b — product retrieved via semantic search, injected for accurate sales/quote replies. */
@@ -94,6 +112,7 @@ export interface HarnessContext {
   products: ProductSnippet[]
   /** L1c — tài liệu bán hàng theo mã sản phẩm. */
   productDocs: ProductDocSnippet[]
+  docAssets: DocAssetSnippet[]
   /** L2 — contact fact sheet (null if no contact yet). */
   contact: ContactProfile | null
   /** L3 — thread/contact memory facts (active facts for this contact). */

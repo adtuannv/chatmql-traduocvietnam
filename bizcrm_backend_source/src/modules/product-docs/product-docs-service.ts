@@ -8,6 +8,7 @@
  *   • Nhân viên: module "Tài liệu bán hàng" ở giao diện.
  *   • AI: nạp vào ngữ cảnh khi tư vấn (harness + AI Trợ lý nội bộ).
  */
+import { mauLinkMiniApp } from '../crm-products/crm-products-client.js'
 import { prisma } from '../../shared/prisma-client.js'
 
 export interface ProductDocInput {
@@ -99,6 +100,8 @@ export interface ProductDocSnippet {
   description: string | null
   imageCount: number
   videoCount: number
+  /** Link Mini App gửi được cho khách. Rỗng = sản phẩm chưa ghép mã. */
+  miniAppUrl: string | null
 }
 
 /**
@@ -134,10 +137,18 @@ export async function retrieveProductDocs(
     take: Math.min(20, Math.max(1, limit)),
   })
 
+  // Dựng sẵn link ở đây thay vì để AI tự ghép: mã Mini App có dấu gạch chéo
+  // nên phải mã hoá, mà mô hình ghép chuỗi thì sai lúc nào không biết — khách
+  // bấm vào link hỏng còn tệ hơn không gửi link.
+  const mau = await mauLinkMiniApp(orgId)
+
   return rows.map((r) => ({
     productCode: r.productCode,
     name: r.name,
     description: r.description,
+    miniAppUrl: r.miniAppId && mau
+      ? mau.replaceAll('{miniapp}', encodeURIComponent(r.miniAppId))
+      : null,
     imageCount: r.images.length,
     videoCount: r.videoUrls.length,
   }))

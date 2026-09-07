@@ -18,9 +18,10 @@ import { retrieveKb } from '../../knowledge/kb-service.js'
 import { retrieveKbSemantic } from '../../knowledge/embedding-service.js'
 import { retrieveProductSemantic } from '../../products/product-embedding.js'
 import { retrieveProductDocs } from '../../product-docs/product-docs-service.js'
+import { retrieveDocAssets } from '../../doc-library/doc-library-service.js'
 import { getThreadMemory } from '../../knowledge/memory-service.js'
 import { getToolsConfig, type ToolsConfig, type ToolConfig } from '../tools-config-service.js'
-import type { HarnessContext, ContactProfile, KbSnippet, ProductSnippet, ProductDocSnippet, MemoryFact, ScenarioSnippet, StaffNoteSnippet } from './harness-types.js'
+import type { HarnessContext, ContactProfile, KbSnippet, ProductSnippet, ProductDocSnippet, DocAssetSnippet, MemoryFact, ScenarioSnippet, StaffNoteSnippet } from './harness-types.js'
 import { recordStep } from '../observability/trace-recorder.js'
 // Ngân sách ký tự theo model (base/large) — xem budgets.ts vì sao có 2 bậc.
 // Thay cho các hằng BUDGET_L*_CHARS cứng trước đây; bậc `base` giữ đúng các số cũ.
@@ -267,7 +268,7 @@ export async function assembleContext(
   // In agent mode (skipRag) the generator fetches KB/products via tool calls,
   // so we don't pre-fetch them here (avoids double retrieval).
   // Parallelize all layer loads (each KB/product tool gated by its own config)
-  const [logic, scenarios, contact, threadMemory, staffNotes, kbSnippets, products, productDocs, recentMessages] = await Promise.all([
+  const [logic, scenarios, contact, threadMemory, staffNotes, kbSnippets, products, productDocs, docAssets, recentMessages] = await Promise.all([
     getActiveLogicContext(orgId),                                                          // L0
     loadScenarios(orgId, turnText, ragTopK, budgets.l0bScenarios, opts.minScore),          // L0b
     contactId ? loadContactProfile(contactId) : Promise.resolve(null),                    // L2
@@ -278,6 +279,7 @@ export async function assembleContext(
     // L1c — tài liệu bán hàng theo mã SP. Nạp cả ở chế độ agent: đây là tri thức
     // ChatMQL tự soạn, không nằm trong công cụ tra cứu nào của mô hình.
     retrieveProductDocs(orgId, turnText, 5).catch(() => [] as ProductDocSnippet[]),          // L1c
+    retrieveDocAssets(orgId, turnText, 5).catch(() => [] as DocAssetSnippet[]),               // L1d
     loadRecentMessages(convId, budgets.l5Messages, opts.historyBefore),                     // L5
   ])
 
@@ -306,6 +308,7 @@ export async function assembleContext(
     kbSnippets,
     products,
     productDocs,
+    docAssets,
     contact,
     threadMemory,
     staffNotes,

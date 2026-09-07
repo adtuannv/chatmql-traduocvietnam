@@ -106,10 +106,34 @@ export function buildGeneratorPrompt(ctx: HarnessContext, decision: RouterDecisi
         const media = [d.imageCount ? `${d.imageCount} ảnh` : '', d.videoCount ? `${d.videoCount} video` : '']
           .filter(Boolean).join(' · ')
         const head = `### ${d.name ?? d.productCode} (mã ${d.productCode})${media ? ` — có ${media}` : ''}`
-        return `${head}\n${d.description ?? ''}`.trim()
+        // Link dựng sẵn, dán nguyên văn. Nói rõ để mô hình khỏi tự chế link.
+        const link = d.miniAppUrl ? `\nLink đặt hàng (dán nguyên văn): ${d.miniAppUrl}` : ''
+        return `${head}\n${d.description ?? ''}${link}`.trim()
       })
       .join('\n\n')
-    parts.push(`\n## Tài liệu bán hàng (do công ty soạn — dùng để mô tả sản phẩm cho khách; nếu có ảnh/video thì có thể đề nghị gửi)\n${docs}`)
+    parts.push(`\n## Tài liệu bán hàng (do công ty soạn — dùng để mô tả sản phẩm cho khách; nếu có ảnh/video thì có thể đề nghị gửi. Sản phẩm nào có "Link đặt hàng" thì gửi kèm link đó cho khách, DÁN NGUYÊN VĂN, tuyệt đối không sửa hay tự ghép link)\n${docs}`)
+  }
+
+  // L1d — thư viện tài liệu bán hàng. Khác khối trên ở chỗ đây là tài liệu
+  // dùng chung: biểu giá, chính sách, bộ ảnh theo chủ đề — không gắn với một mã
+  // sản phẩm nào. Đội sale soạn ở module Tài liệu bán hàng.
+  if (ctx.docAssets && ctx.docAssets.length > 0) {
+    const LOAI: Record<string, string> = {
+      product: 'tài liệu sản phẩm', image: 'ảnh', video: 'video',
+      pdf: 'tệp PDF', doc: 'tài liệu', text: 'ghi chú', link: 'đường dẫn',
+    }
+    const ds = ctx.docAssets
+      .map((d) => {
+        const noi = [d.description, d.textContent].filter(Boolean).join('\n')
+        const ma = d.productCodes.length ? ` — cho mã ${d.productCodes.join(', ')}` : ''
+        const gui = d.sendable ? ' · GỬI ĐƯỢC cho khách' : ''
+        return `### ${d.title} (${LOAI[d.kind] ?? d.kind}${ma}${gui})\n${noi}`.trim()
+      })
+      .join('\n\n')
+    parts.push(
+      `\n## Thư viện tài liệu bán hàng (đội sale soạn — dùng để trả lời khách.` +
+      ` Mục nào ghi "GỬI ĐƯỢC" thì có thể đề nghị gửi cho khách)\n${ds}`,
+    )
   }
 
   // Full recent conversation for context

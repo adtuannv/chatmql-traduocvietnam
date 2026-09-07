@@ -47,6 +47,7 @@ describe('buildGeneratorPrompt — tích hợp ghi chú nhân viên vào auto-re
     kbSnippets: [],
     products: [],
     productDocs: [],
+    docAssets: [],
     contact: {
       fullName: 'Anh Hoàng',
       lifecycleStage: 'customer',

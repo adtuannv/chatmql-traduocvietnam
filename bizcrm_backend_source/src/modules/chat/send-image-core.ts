@@ -126,6 +126,16 @@ async function loadImageBytes(imageUrl: string): Promise<{ buffer: Buffer; filen
   };
 }
 
+/** Phản hồi tải lên có dùng làm ảnh để hiện được không. */
+function coAnhDungDuoc(raw: string): boolean {
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    return !!(o.href || o.thumb || o.hdUrl);
+  } catch {
+    return false;
+  }
+}
+
 export async function sendImageCore(params: SendImageCoreParams): Promise<SendImageCoreResult> {
   const { orgId, conversationId, imageUrl, caption, sender } = params
 
@@ -177,6 +187,19 @@ export async function sendImageCore(params: SendImageCoreParams): Promise<SendIm
   } catch (err: any) {
     logger.error({ err, conversationId }, '[send-image] gửi ra kênh thất bại')
     return { sent: false, error: err?.message || 'Gửi ảnh thất bại' }
+  }
+
+  // Zalo trả về hai dạng phản hồi khác nhau: ảnh thì có `href`/`thumb`, còn tệp
+  // thì có `fileUrl`/`fileName`. Cất nguyên dạng thứ hai vào tin loại ảnh là
+  // giao diện nhân viên không tìm ra ảnh nào để vẽ, hiện thành ô ảnh vỡ kèm chữ
+  // "Hình ảnh" — đã xảy ra thật. Nhận về dạng nào không dùng được thì bỏ, quay
+  // về đường dẫn của chính mình.
+  if (uploadedContent && !coAnhDungDuoc(uploadedContent)) {
+    logger.warn(
+      { conversationId, filename, tra_ve: uploadedContent.slice(0, 120) },
+      '[send-image] Zalo trả về phản hồi không phải ảnh — dùng đường dẫn của mình',
+    )
+    uploadedContent = undefined
   }
 
   if (!uploadedContent) {
