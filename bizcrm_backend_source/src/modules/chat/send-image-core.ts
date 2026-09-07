@@ -80,16 +80,50 @@ export async function isImageAvailable(imageUrl: string): Promise<boolean> {
   } catch { return false }
 }
 
+/** Đuôi tệp theo kiểu MIME. Zalo nhìn ĐUÔI để quyết định hiện ảnh hay đính kèm. */
+const DUOI_THEO_MIME: Record<string, string> = {
+  'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png',
+  'image/gif': '.gif', 'image/webp': '.webp', 'image/bmp': '.bmp',
+};
+
+/**
+ * Bảo đảm tên tệp có đuôi ảnh.
+ *
+ * Zalo quyết định hiện ảnh hay hiện thẻ đính kèm dựa vào ĐUÔI TỆP, không phải
+ * nội dung. Tên không đuôi là khách nhận được một thẻ tệp xám phải bấm tải về —
+ * vô dụng cho bán hàng. Đã xảy ra thật: nguồn sản phẩm trả ảnh dạng
+ * `data:image/jpeg;base64,...`, tên suy ra từ đó thành `2Q==` và khách nhận
+ * được "tệp 2Q== · 132 KB".
+ */
+function themDuoiAnh(ten: string, mime?: string | null): string {
+  const sach = ten.replace(/[^\w.\-]/g, '') || 'anh';
+  if (/\.(jpe?g|png|gif|webp|bmp)$/i.test(sach)) return sach;
+  return sach + (DUOI_THEO_MIME[(mime ?? '').split(';')[0].trim().toLowerCase()] ?? '.jpg');
+}
+
 /** Đọc bytes của ảnh. Ưu tiên đọc thẳng từ đĩa để khỏi tự gọi HTTP vào chính mình. */
 async function loadImageBytes(imageUrl: string): Promise<{ buffer: Buffer; filename: string }> {
-  const filename = path.basename(new URL(imageUrl, 'http://x').pathname) || 'image.jpg'
+  // Ảnh nhúng thẳng trong chuỗi: không có tên tệp nào để lấy, phải tự đặt.
+  const nhung = /^data:([^;,]+)[^,]*,(.*)$/is.exec(imageUrl);
+  if (nhung) {
+    const mime = nhung[1];
+    const raw = nhung[2];
+    const buffer = /;base64/i.test(imageUrl)
+      ? Buffer.from(raw, 'base64')
+      : Buffer.from(decodeURIComponent(raw), 'utf8');
+    return { buffer, filename: themDuoiAnh('anh-san-pham', mime) };
+  }
 
-  const local = localPathOf(imageUrl)
-  if (local) return { buffer: await readFile(local), filename: path.basename(local) }
+  const local = localPathOf(imageUrl);
+  if (local) return { buffer: await readFile(local), filename: themDuoiAnh(path.basename(local)) };
 
-  const res = await fetch(imageUrl)
-  if (!res.ok) throw new Error(`Không tải được ảnh (${res.status})`)
-  return { buffer: Buffer.from(await res.arrayBuffer()), filename }
+  const res = await fetch(imageUrl);
+  if (!res.ok) throw new Error(`Không tải được ảnh (${res.status})`);
+  const ten = path.basename(new URL(imageUrl, 'http://x').pathname) || 'anh';
+  return {
+    buffer: Buffer.from(await res.arrayBuffer()),
+    filename: themDuoiAnh(ten, res.headers.get('content-type')),
+  };
 }
 
 export async function sendImageCore(params: SendImageCoreParams): Promise<SendImageCoreResult> {

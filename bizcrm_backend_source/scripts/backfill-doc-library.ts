@@ -30,7 +30,11 @@
  *   yarn tsx scripts/backfill-doc-library.ts --org=<id>  # chỉ định tổ chức
  *   yarn tsx scripts/backfill-doc-library.ts --apply --ghi-de   # kéo lại từ nguồn
  */
+import { createHash } from 'node:crypto'
+import { mkdir, writeFile, access } from 'node:fs/promises'
+import path from 'node:path'
 import { prisma } from '../src/shared/prisma-client.js'
+import { DOC_ASSETS_DIR } from '../src/modules/doc-library/doc-assets-store.js'
 import { listCrmProducts, type CrmProduct } from '../src/modules/crm-products/crm-products-client.js'
 
 const APPLY = process.argv.includes('--apply')
@@ -109,6 +113,53 @@ function moTaGon(raw: Record<string, unknown>): string | null {
   return s || null
 }
 
+const DUOI_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
+  'image/gif': 'gif', 'image/webp': 'webp',
+}
+
+/** Chuỗi ảnh nhúng thẳng vào dữ liệu, không phải đường dẫn. */
+function laAnhNhung(v: string): boolean {
+  return v.startsWith('data:')
+}
+
+/**
+ * Hệ thống nguồn trả ảnh dưới dạng `data:image/jpeg;base64,...` chứ không phải
+ * đường dẫn. Cất nguyên chuỗi đó vào cơ sở dữ liệu gây hai chuyện: mỗi dòng
+ * phình lên hơn trăm KB, và khi gửi khách thì không có tên tệp nào để suy ra
+ * đuôi — Zalo bèn hiện thành thẻ đính kèm `2Q==` thay vì ảnh.
+ *
+ * Nên giải ra tệp thật. Tên đặt theo băm nội dung để chạy lại không sinh thêm
+ * bản sao của cùng một tấm ảnh.
+ */
+async function luuAnhNhung(chuoi: string): Promise<string | null> {
+  const m = /^data:([^;,]+)[^,]*;base64,(.*)$/is.exec(chuoi)
+  if (!m) return null
+  const duoi = DUOI_MIME[m[1].trim().toLowerCase()] ?? 'jpg'
+  const buf = Buffer.from(m[2], 'base64')
+  if (!buf.length) return null
+
+  const ten = `sp-${createHash('sha1').update(buf).digest('hex').slice(0, 16)}.${duoi}`
+  const duongDan = path.join(DOC_ASSETS_DIR, ten)
+  if (APPLY) {
+    await mkdir(DOC_ASSETS_DIR, { recursive: true })
+    // Trùng băm là trùng nội dung — khỏi ghi lại.
+    try { await access(duongDan) } catch { await writeFile(duongDan, buf) }
+  }
+  return `/uploads/doc-assets/${ten}`
+}
+
+/** Đổi mọi ảnh nhúng thành đường dẫn tệp; ảnh vốn là đường dẫn thì giữ nguyên. */
+async function chuanHoaAnh(ds: string[]): Promise<string[]> {
+  const ra: string[] = []
+  for (const v of ds) {
+    if (!laAnhNhung(v)) { ra.push(v); continue }
+    const d = await luuAnhNhung(v)
+    if (d) ra.push(d)
+  }
+  return ra
+}
+
 /** Nhóm sản phẩm theo thương hiệu rồi theo loại, giữ thứ tự nhiều-trước. */
 function nhomTheoCay(products: CrmProduct[]): Map<string, Map<string, CrmProduct[]>> {
   const cay = new Map<string, Map<string, CrmProduct[]>>()
@@ -169,7 +220,7 @@ async function ghiTaiNguyen(
   const them: Record<string, unknown> = { title: p.name }
   if (!dangCo.folderId) them.folderId = folderId
   if (moTa && (GHI_DE || !dangCo.description)) them.description = moTa
-  if (anh.length && (GHI_DE || !dangCo.images.length)) them.images = anh
+  if (anh.length && (GHI_DE || dangCo.images.some(laAnhNhung) || !dangCo.images.length)) them.images = anh
 
   tk.taiNguyenCapNhat++
   if (APPLY) await prisma.docAsset.update({ where: { id: dangCo.id }, data: them })
@@ -226,13 +277,14 @@ async function main() {
 
         // Chỉ điền chỗ trống. Người thật đã soạn gì thì giữ nguyên.
         const moTa = moTaGon(p.raw)
-        const anh = p.imageUrl ? [p.imageUrl] : []
+        const anh = await chuanHoaAnh(p.imageUrl ? [p.imageUrl] : [])
         const miniApp = `${ma}-ZL`
 
         const them: Record<string, unknown> = {}
         if (!dangCo?.folderId) them.folderId = idLoai
         if (moTa && (GHI_DE || !dangCo?.description)) { them.description = moTa; tk.dienMoTa++ }
-        if (anh.length && (GHI_DE || !dangCo?.images?.length)) { them.images = anh; tk.dienAnh++ }
+        const anhCuHong = !!dangCo?.images?.some(laAnhNhung)
+        if (anh.length && (GHI_DE || anhCuHong || !dangCo?.images?.length)) { them.images = anh; tk.dienAnh++ }
         if (!dangCo?.miniAppId) { them.miniAppId = miniApp; tk.dienMiniApp++ }
 
         // Thư viện tài liệu bán hàng liệt kê doc_assets, KHÔNG phải product_docs.
