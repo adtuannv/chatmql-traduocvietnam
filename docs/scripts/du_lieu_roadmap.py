@@ -121,7 +121,7 @@ CHECKLIST = [
 
 # (Loại, Vấn đề, Ảnh hưởng, Cần làm gì, Mức độ, Trạng thái, Ghi chú)
 TON_DONG = [
-    ('Chặn tính năng', '34 trong 45 sản phẩm Mini App chưa ghép được với ChatMQL', 'Nút gửi link bị khoá ở những sản phẩm chưa ghép', 'Xác nhận từng cặp tên, hoặc thống nhất một hệ mã chung giữa hai bên', 'Cao', 'Đang làm', 'Đã ghép 11 cặp chắc chắn theo mã và theo tên kèm giá'),
+    ('Dữ liệu', '51 trong 84 sản phẩm chưa có trên Mini App', 'Nút gửi link bị khoá ở những sản phẩm đó', 'Đăng thêm sản phẩm lên Mini App, hoặc chấp nhận chỉ gửi link cho 33 sản phẩm đang có', 'Trung bình', 'Chờ phụ thuộc', 'Đã tự ghép 33 sản phẩm theo quy tắc mã FM cộng hậu tố -ZL'),
     ('Chặn tính năng', 'Chưa có địa chỉ Mini App thật', 'Không gửi được link đặt hàng cho khách', 'Đã xong: lấy từ hệ quản trị Mini App, đã đặt vào cấu hình', 'Cao', 'Xong', 'Mini App id 1575573710529516487'),
     ('Dữ liệu', 'Sản phẩm FM hầu hết chưa có ảnh', 'Thẻ sản phẩm gửi khách hiện ô trống', 'Bổ sung ảnh ở hệ thống FM, hoặc lấy ảnh từ tài liệu bán hàng', 'Trung bình', 'Chưa bắt đầu', 'Chỉ 5/84 sản phẩm có ảnh'),
     ('Chặn tính năng', 'CRM không trả mã khách khi tạo đơn', 'Phiếu bán hàng thiếu mã khách so với bản giấy', 'Bên CRM bổ sung trường này vào phản hồi', 'Trung bình', 'Chờ phụ thuộc', ''),

@@ -2184,6 +2184,11 @@ model ProductDoc {
   videoUrls   String[] @default([]) @map("video_urls")
   /// Từ khoá/tên gọi khác, giúp AI tìm đúng tài liệu.
   keywords    String?
+  /// Mã sản phẩm bên Zalo Mini App, dùng dựng link gửi khách.
+  /// Để ở đây chứ không ở bảng sản phẩm: ánh xạ này là tri thức của ChatMQL,
+  /// phải sống độc lập với nguồn sản phẩm đang bật, nếu không thì đổi nguồn
+  /// là mất sạch công ghép.
+  miniAppId   String?  @map("mini_app_id")
   updatedById String?  @map("updated_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

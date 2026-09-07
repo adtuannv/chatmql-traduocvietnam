@@ -25,6 +25,7 @@ import { formatVnd } from '@/lib/order-calc'
 import { useProductDoc, useSaveProductDoc } from '@/hooks/use-product-docs'
 import { type CrmProduct } from '@/hooks/use-crm-products'
 import { MiniAppCell } from './miniapp-cell'
+import { ImageManager } from './image-manager'
 
 /** Một ô thông tin chỉ đọc. */
 function O({ nhan, children }: { nhan: string; children: React.ReactNode }) {
@@ -52,7 +53,7 @@ export function ProductRowDetail({
   const [sua, setSua] = useState(false)
   const [moTa, setMoTa] = useState('')
   const [tuKhoa, setTuKhoa] = useState('')
-  const [anh, setAnh] = useState('')
+  const [anh, setAnh] = useState<string[]>([])
   const [video, setVideo] = useState('')
 
   // Nạp lại mỗi khi tài liệu đổi, kể cả sau khi lưu — nếu không thì ô nhập giữ
@@ -60,7 +61,7 @@ export function ProductRowDetail({
   useEffect(() => {
     setMoTa(doc?.description ?? '')
     setTuKhoa(doc?.keywords ?? '')
-    setAnh((doc?.images ?? []).join('\n'))
+    setAnh(doc?.images ?? [])
     setVideo((doc?.videoUrls ?? []).join('\n'))
   }, [doc])
 
@@ -73,7 +74,7 @@ export function ProductRowDetail({
           name: p.name,
           description: moTa.trim() || null,
           keywords: tuKhoa.trim() || null,
-          images: tachDong(anh),
+          images: anh,
           videoUrls: tachDong(video),
         },
       },
@@ -87,7 +88,7 @@ export function ProductRowDetail({
   const huy = () => {
     setMoTa(doc?.description ?? '')
     setTuKhoa(doc?.keywords ?? '')
-    setAnh((doc?.images ?? []).join('\n'))
+    setAnh(doc?.images ?? [])
     setVideo((doc?.videoUrls ?? []).join('\n'))
     setSua(false)
   }
@@ -180,9 +181,8 @@ export function ProductRowDetail({
                     </p>
                   </div>
                   <div className="grid gap-1.5">
-                    <Label className="text-[11px]">Ảnh — mỗi dòng một đường dẫn</Label>
-                    <Textarea rows={3} value={anh} onChange={(e) => setAnh(e.target.value)}
-                              className="font-mono text-[11.5px]" />
+                    <Label className="text-[11px]">Ảnh sản phẩm</Label>
+                    <ImageManager images={anh} onChange={setAnh} />
                   </div>
                   <div className="grid gap-1.5">
                     <Label className="text-[11px]">Video — mỗi dòng một đường dẫn</Label>
@@ -204,14 +204,9 @@ export function ProductRowDetail({
                     <span className="block text-[11px] font-semibold text-muted-foreground">
                       Ảnh {doc?.images?.length ? `(${doc.images.length})` : ''}
                     </span>
-                    {doc?.images?.length ? (
-                      <div className="mt-1 flex flex-wrap gap-1.5">
-                        {doc.images.slice(0, 6).map((u, i) => (
-                          <img key={`${u}-${i}`} src={u} alt="" loading="lazy"
-                               className="h-12 w-12 rounded border object-cover" />
-                        ))}
-                      </div>
-                    ) : <span className="text-[13px] text-muted-foreground">—</span>}
+                    <div className="mt-1">
+                      <ImageManager images={doc?.images ?? []} onChange={() => {}} doc />
+                    </div>
                   </div>
                   {!!doc?.videoUrls?.length && (
                     <div>

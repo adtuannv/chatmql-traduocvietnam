@@ -106,8 +106,8 @@ function HopThoaiGhep({
   )
 
   const ghi = (ma: string | null) => {
-    if (!p.id) { toast.error('Sản phẩm này không có id nên chưa lưu được'); return }
-    luu.mutate({ id: String(p.id), miniAppId: ma }, {
+    if (!p.code) { toast.error('Sản phẩm chưa có mã nên chưa ghép được link'); return }
+    luu.mutate({ code: p.code, miniAppId: ma }, {
       onSuccess: () => { toast.success(ma ? `Đã ghép ${ma}` : 'Đã gỡ mã Mini App'); onDong() },
       onError: (e) => toast.error(`Không lưu được: ${apiError(e)}`),
     })

@@ -11,7 +11,7 @@ import {
   nguonDaChon, luuNguon, CAC_NGUON, type CrmProductSource,
 } from './crm-products-client.js'
 
-type NguoiDung = { orgId: string; role: string }
+type NguoiDung = { orgId: string; role: string; id: string }
 
 /** Chỉ người quản lý mới được sửa ánh xạ — gửi nhầm link là gửi nhầm cho khách. */
 function duocSua(role: string): boolean {
@@ -128,39 +128,30 @@ export async function crmProductRoutes(app: FastifyInstance): Promise<void> {
   })
 
   /**
-   * Ghép hoặc gỡ mã Mini App cho một sản phẩm.
+   * Ghép hoặc gỡ mã Mini App cho một sản phẩm, khoá theo MÃ sản phẩm.
    *
-   * Ghi vào `specs` của bảng sản phẩm nội bộ. Khi đổi sang API nguồn chính
-   * thức thì ánh xạ này phải chuyển sang bảng riêng của ChatMQL — ghi ngược
-   * vào hệ thống nguồn là việc không nên làm.
+   * Trước đây ghi vào bảng sản phẩm nội bộ nên đổi sang nguồn chính thức là
+   * không lưu được, và công ghép cũng mất theo nguồn. Nay lưu vào tài liệu sản
+   * phẩm của ChatMQL — ánh xạ này là tri thức của mình, phải sống độc lập với
+   * nguồn đang bật.
    */
-  app.patch<{ Params: { id: string }; Body: { miniAppId?: string | null } }>(
-    '/api/v1/crm-products/:id/miniapp',
+  app.patch<{ Params: { code: string }; Body: { miniAppId?: string | null } }>(
+    '/api/v1/crm-products/:code/miniapp',
     async (request, reply) => {
       const u = request.user as NguoiDung
       if (!duocSua(u.role)) return reply.status(403).send({ error: 'Không có quyền sửa ánh xạ Mini App' })
-      if ((await resolveSourceFor(u.orgId)) !== 'local') {
-        return reply.status(400).send({
-          error: 'Nguồn sản phẩm hiện không phải bảng nội bộ nên chưa lưu được ánh xạ ở đây',
-        })
-      }
 
-      const sp = await prisma.product.findFirst({
-        where: { id: request.params.id, orgId: u.orgId },
-        select: { id: true, specs: true },
+      const ma = decodeURIComponent(request.params.code || '').trim().toUpperCase()
+      if (!ma) return reply.status(400).send({ error: 'Sản phẩm chưa có mã nên chưa ghép được link' })
+
+      const giaTri = (request.body?.miniAppId ?? '').trim() || null
+      const doc = await prisma.productDoc.upsert({
+        where: { orgId_productCode: { orgId: u.orgId, productCode: ma } },
+        update: { miniAppId: giaTri, updatedById: u.id },
+        create: { orgId: u.orgId, productCode: ma, miniAppId: giaTri, updatedById: u.id },
+        select: { productCode: true, miniAppId: true },
       })
-      if (!sp) return reply.status(404).send({ error: 'Không tìm thấy sản phẩm' })
-
-      const ma = (request.body?.miniAppId ?? '').trim()
-      const specs = { ...((sp.specs as Record<string, unknown>) ?? {}) }
-      if (ma) specs.miniapp_id = ma
-      else delete specs.miniapp_id
-
-      await prisma.product.update({
-        where: { id: sp.id },
-        data: { specs: specs as Prisma.InputJsonValue },
-      })
-      return { id: sp.id, miniAppId: ma || null }
+      return { code: doc.productCode, miniAppId: doc.miniAppId }
     },
   )
 

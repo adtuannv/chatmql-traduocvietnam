@@ -336,8 +336,7 @@ async function searchViaLocal(orgId: string, q: string, limit: number): Promise<
       brand: null,
       status: r.status,
       imageUrl: r.images[0] ?? null,
-      // Ghép từ hệ quản trị Mini App, cất trong `specs` để không phải đổi lược đồ.
-      miniAppId: (r.specs as Record<string, unknown> | null)?.miniapp_id as string ?? null,
+      miniAppId: null,
       // Ảnh/mô tả/video có sẵn trong bảng nội bộ — đưa qua `raw` để thư viện tài
       // liệu dựng được nội dung mà cấu trúc chuẩn không phải phình thêm cột.
       raw: {
@@ -470,7 +469,36 @@ export async function searchCrmProducts(
   } else {
     products = await searchViaBridge(q, safeLimit)
   }
-  return { source, products }
+  return { source, products: orgId ? await buMaMiniApp(orgId, products) : products }
+}
+
+/**
+ * Bù mã Mini App từ tài liệu sản phẩm của ChatMQL.
+ *
+ * Ánh xạ này KHÔNG nằm ở hệ thống nguồn — nguồn không biết gì về Mini App, và
+ * để nó ở bảng sản phẩm nội bộ thì đổi nguồn là mất sạch công ghép. Khoá theo
+ * MÃ sản phẩm nên đổi nguồn vẫn giữ nguyên.
+ *
+ * Một truy vấn cho cả trang thay vì mỗi sản phẩm một lần.
+ */
+async function buMaMiniApp(orgId: string, rows: CrmProduct[]): Promise<CrmProduct[]> {
+  const ma = [...new Set(rows.map((p) => p.code?.trim().toUpperCase()).filter((c): c is string => !!c))]
+  if (!ma.length) return rows
+  try {
+    const docs = await prisma.productDoc.findMany({
+      where: { orgId, productCode: { in: ma }, miniAppId: { not: null } },
+      select: { productCode: true, miniAppId: true },
+    })
+    if (!docs.length) return rows
+    const bang = new Map(docs.map((d) => [d.productCode.toUpperCase(), d.miniAppId]))
+    return rows.map((p) => {
+      const m = p.code ? bang.get(p.code.trim().toUpperCase()) : undefined
+      return m ? { ...p, miniAppId: m } : p
+    })
+  } catch {
+    // Không đọc được ánh xạ thì danh sách vẫn phải hiện, chỉ là nút gửi bị khoá.
+    return rows
+  }
 }
 
 /** Nguồn nội bộ mà thiếu tổ chức là lỗi lập trình, không phải lỗi cấu hình. */
@@ -523,7 +551,7 @@ export async function listCrmProducts(params: ListParams = {}): Promise<ListResu
       })
       return {
         source,
-        products: rows,
+        products: await buMaMiniApp(params.orgId!, rows),
         categories: await danhMucFm(),
         meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
       }
@@ -533,7 +561,7 @@ export async function listCrmProducts(params: ListParams = {}): Promise<ListResu
     const loc = rows.filter((p) => !params.category || (p.categoryName ?? '') === params.category)
     return {
       source,
-      products: loc.slice((page - 1) * pageSize, page * pageSize),
+      products: await buMaMiniApp(params.orgId!, loc.slice((page - 1) * pageSize, page * pageSize)),
       categories: await danhMucFm(),
       meta: {
         page, pageSize, total: loc.length,
@@ -562,7 +590,7 @@ export async function listCrmProducts(params: ListParams = {}): Promise<ListResu
 
   return {
     source,
-    products: rows,
+    products: params.orgId ? await buMaMiniApp(params.orgId, rows) : rows,
     categories,
     meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
   }

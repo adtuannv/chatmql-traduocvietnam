@@ -75,11 +75,12 @@ export function useMiniAppCatalog() {
   })
 }
 
+/** Ghép theo MÃ sản phẩm — ánh xạ sống độc lập với nguồn đang bật. */
 export function useSetMiniAppId() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, miniAppId }: { id: string; miniAppId: string | null }) =>
-      (await api.patch(`/crm-products/${encodeURIComponent(id)}/miniapp`, { miniAppId })).data,
+    mutationFn: async ({ code, miniAppId }: { code: string; miniAppId: string | null }) =>
+      (await api.patch(`/crm-products/${encodeURIComponent(code)}/miniapp`, { miniAppId })).data,
     // Danh sách sản phẩm phải tải lại để cột mã và nút Gửi cập nhật theo.
     onSuccess: () => qc.invalidateQueries({ queryKey: ['crm-products'] }),
   })
