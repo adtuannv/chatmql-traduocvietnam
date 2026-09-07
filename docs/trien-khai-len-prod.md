@@ -48,7 +48,34 @@ Toàn bộ là **thêm mới**, không xoá và không đổi kiểu cột nào,
 Cột thêm vào bảng đã có — tất cả đều cho phép rỗng hoặc có giá trị mặc định:
 
 | Bảng | Cột | Ghi chú |
-|---|---|---|
+|### 1.3. nginx phải để `location ^~ /uploads/`
+
+Kiểm tra nhanh trên máy chủ đang chạy:
+
+```bash
+curl -s -o /dev/null -w "%{content_type}\n" https://<tên-miền>/uploads/doc-assets/test.jpg
+```
+
+- Trả `application/json` → đúng, request tới được backend.
+- Trả `text/html` → **SAI**: nginx đang tự trả 404, backend không hề thấy
+  request. Mọi ảnh do hệ thống lưu sẽ hỏng: tài liệu bán hàng, ảnh chat, ảnh
+  sản phẩm.
+
+Nguyên nhân là trong nginx **regex thắng prefix**. Chỉ cần ở đâu đó trong cấu
+hình có một khối kiểu `location ~* \.(png|jpg|css|js)$` là nó cướp mất mọi
+request ảnh, kể cả `/uploads/`. Dấu `^~` khiến prefix thắng và chặn regex xen vào:
+
+```nginx
+location ^~ /uploads/ {
+    proxy_pass http://127.0.0.1:4520;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Sửa xong chạy `nginx -t` rồi `systemctl reload nginx`.
+
+---|---|---|
 | `ai_configs` | `group_require_mention` | mặc định `true` — ĐỔI HÀNH VI, xem mục 2.1 |
 | `ai_configs` | `mention_names` | rỗng |
 | `conversations` | `require_mention` | rỗng = theo cài đặt chung |
