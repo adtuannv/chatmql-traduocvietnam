@@ -19,6 +19,7 @@ import { resetIdleCheckpoints } from '../automation/conversation-idle-poller.js'
 import { extractPhoneFromName } from '../contacts/phone-extractor.js'
 import { getAiReplyConfig, resolveConversationMode } from '../ai/ai-config-service.js'
 import { enqueueAiReply } from '../../shared/queue.js'
+import { duocPhepTraLoi } from '../ai/mention-rule.js'
 
 export interface IncomingMessage {
   accountId: string
@@ -290,14 +291,26 @@ export async function handleIncomingMessage(
           hasContent: !!msg.content?.trim(),
         }, '[ai-harness] evaluating inbound message trigger')
 
+        // Nhóm: chờ có người gọi đích danh mới trả lời, nếu tổ chức bật luật.
+        const luat = await duocPhepTraLoi({
+          orgId: account.orgId,
+          laNhom: conversation.threadType === 'group',
+          noiDung: msg.content ?? '',
+          batLuat: aiReplyCfg.groupRequireMention,
+          tenTuDat: aiReplyCfg.mentionNames,
+        })
+
         if (
           aiReplyCfg.autoReplyEnabled
           && !isPaused
           && (effectiveMode === 'suggest' || effectiveMode === 'auto')
           && msg.content?.trim()
+          && luat.duoc
         ) {
           enqueueAiReply(conversation.id, aiReplyCfg.debounceSeconds * 1000)
             .catch(err => logger.error({ err }, '[ai-harness] enqueue error'))
+        } else if (!luat.duoc) {
+          logger.debug({ convId: conversation.id, lyDo: luat.lyDo }, '[ai-harness] bỏ qua theo luật nhắc tên')
         }
       } catch (err) {
         logger.error({ err }, '[ai-harness] mode resolution error')
@@ -646,7 +659,8 @@ async function findOrCreateConversation(
 
   const existing = await prisma.conversation.findFirst({
     where: { channelAccountId: msg.accountId, externalThreadId },
-    select: { id: true, displayName: true, aiMode: true, aiModeReason: true, aiPausedUntil: true },
+    // threadType: luật "chỉ trả lời khi được nhắc tên" chỉ áp cho nhóm.
+    select: { id: true, displayName: true, aiMode: true, aiModeReason: true, aiPausedUntil: true, threadType: true },
   })
 
   if (existing) {
@@ -683,7 +697,7 @@ async function findOrCreateConversation(
       isReplied: msg.isSelf,
       aiMode: defaultAiMode,
     },
-    select: { id: true, aiMode: true, aiModeReason: true, aiPausedUntil: true },
+    select: { id: true, aiMode: true, aiModeReason: true, aiPausedUntil: true, threadType: true },
   })
 }
 

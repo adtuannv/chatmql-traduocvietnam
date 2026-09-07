@@ -169,6 +169,8 @@ export async function aiRoutes(app: FastifyInstance): Promise<void> {
       autoReplyEnabled?: boolean
       debounceSeconds?: number
       prefilterKeywords?: string | null
+      groupRequireMention?: boolean
+      mentionNames?: string | null
       // RAG guardrail allow-lists (empty = no limit)
       allowedProductCategoryIds?: string[]
       allowedKnowledgeCategoryIds?: string[]

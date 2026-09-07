@@ -431,6 +431,8 @@ function AutoReplyBox({ config, canEdit }: { config: AiConfig; canEdit: boolean 
   const [defaultAiMode, setDefaultAiMode] = useState<AiMode>(config.defaultAiMode)
   const [debounceSeconds, setDebounceSeconds] = useState(config.debounceSeconds)
   const [verifyBeforeSend, setVerifyBeforeSend] = useState(Boolean(config.verifyBeforeSend))
+  const [groupRequireMention, setGroupRequireMention] = useState(config.groupRequireMention !== false)
+  const [mentionNames, setMentionNames] = useState(config.mentionNames ?? '')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -438,12 +440,17 @@ function AutoReplyBox({ config, canEdit }: { config: AiConfig; canEdit: boolean 
     setDefaultAiMode(config.defaultAiMode)
     setDebounceSeconds(config.debounceSeconds)
     setVerifyBeforeSend(Boolean(config.verifyBeforeSend))
+    setGroupRequireMention(config.groupRequireMention !== false)
+    setMentionNames(config.mentionNames ?? '')
   }, [config])
 
   async function handleSave() {
     setSaving(true)
     try {
-      await updateAiConfig({ autoReplyEnabled, defaultAiMode, debounceSeconds, verifyBeforeSend })
+      await updateAiConfig({
+        autoReplyEnabled, defaultAiMode, debounceSeconds, verifyBeforeSend,
+        groupRequireMention, mentionNames: mentionNames.trim() || null,
+      })
       await qc.invalidateQueries({ queryKey: aiKeys.config })
       toast.success('Đã lưu trả lời tự động')
     } catch (err) {
@@ -499,6 +506,33 @@ function AutoReplyBox({ config, canEdit }: { config: AiConfig; canEdit: boolean 
           </div>
           <Switch checked={verifyBeforeSend} onCheckedChange={setVerifyBeforeSend} disabled={!canEdit} />
         </div>
+
+        <div className="flex items-center justify-between">
+          <div className="min-w-0 pr-3">
+            <Label>Trong nhóm, chỉ trả lời khi được nhắc tên</Label>
+            <p className="text-xs text-muted-foreground">
+              Nhóm có nhiều người nói với nhau; AI đáp mọi câu là chen ngang. Bật thì AI
+              ngồi im tới khi có người gọi đích danh. Hội thoại một-một không bị ảnh hưởng.
+            </p>
+          </div>
+          <Switch checked={groupRequireMention} onCheckedChange={setGroupRequireMention} disabled={!canEdit} />
+        </div>
+
+        {groupRequireMention && (
+          <div className="grid gap-2">
+            <Label>Tên gọi để nhận biết</Label>
+            <Input
+              value={mentionNames}
+              onChange={(e) => setMentionNames(e.target.value)}
+              placeholder="Trợ lý, Bot Trà, AI — cách nhau bằng dấu phẩy"
+              disabled={!canEdit}
+            />
+            <p className="text-xs text-muted-foreground">
+              Để trống thì lấy tên các bot đang bật. Nhận cả kiểu tag @Tên lẫn gọi tên
+              trần trong câu, và không phân biệt dấu.
+            </p>
+          </div>
+        )}
 
         <div className="grid max-w-xs gap-2">
           <Label>Debounce (giây)</Label>

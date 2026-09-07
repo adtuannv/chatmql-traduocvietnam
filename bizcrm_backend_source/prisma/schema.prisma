@@ -766,6 +766,12 @@ model AiConfig {
   autoReplyEnabled        Boolean  @default(false) @map("auto_reply_enabled") // org master switch
   debounceSeconds         Int      @default(5) @map("debounce_seconds")
   prefilterKeywords       String?  @map("prefilter_keywords") // Pass 0 cheap handoff keywords
+  // Trong nhóm, AI trả lời mọi câu là phá hội thoại của người thật. Bật cờ này
+  // thì chỉ những tin có nhắc tên mới được trả lời.
+  groupRequireMention     Boolean  @default(true) @map("group_require_mention")
+  // Các tên gọi coi là "được nhắc", cách nhau bằng dấu phẩy. Trống thì dùng
+  // tên các bot đang bật của tổ chức.
+  mentionNames            String?  @map("mention_names")
   // ── RAG + embeddings (M3) ──
   ragTopK                 Int      @default(5) @map("rag_top_k") // number of KB entries to retrieve
   ragMinScore             Float?   @map("rag_min_score") // min cosine similarity for a RAG hit (null = default 0.35)

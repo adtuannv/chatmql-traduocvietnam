@@ -50,6 +50,10 @@ export interface AiConfig {
   autoReplyEnabled: boolean
   debounceSeconds: number
   prefilterKeywords: string | null
+  /** Nhóm: chỉ trả lời khi được nhắc tên. */
+  groupRequireMention: boolean
+  /** Tên gọi coi là được nhắc, cách nhau bằng dấu phẩy. */
+  mentionNames: string | null
   verifyBeforeSend?: boolean
   hasOpenaiKey: boolean
   hasMinimaxKey: boolean
@@ -251,6 +255,10 @@ export async function updateAiConfig(body: Partial<{
   autoReplyEnabled: boolean
   debounceSeconds: number
   prefilterKeywords: string | null
+  /** Nhóm: chỉ trả lời khi được nhắc tên. */
+  groupRequireMention: boolean
+  /** Tên gọi coi là được nhắc, cách nhau bằng dấu phẩy. */
+  mentionNames: string | null
   verifyBeforeSend: boolean
 }>) {
   const { data } = await api.put('/ai/config', body)
