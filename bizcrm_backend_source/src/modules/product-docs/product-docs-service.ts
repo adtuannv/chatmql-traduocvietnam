@@ -55,13 +55,16 @@ export async function upsertProductDoc(
   const productCode = normalizeCode(code)
   if (!productCode) throw new Error('Thiếu mã sản phẩm')
 
+  // `undefined` = không đụng tới, `null` = xoá trắng. Gộp hai thứ này lại thì
+  // người dùng xoá hết mô tả rồi bấm Lưu mà nội dung cũ vẫn còn nguyên — và họ
+  // sẽ tưởng hệ thống không lưu được.
   const patch = {
-    folderId: data.folderId === undefined ? undefined : data.folderId,
-    name: data.name ?? undefined,
-    description: data.description ?? undefined,
-    images: data.images ?? undefined,
-    videoUrls: data.videoUrls ?? undefined,
-    keywords: data.keywords ?? undefined,
+    folderId: data.folderId,
+    name: data.name,
+    description: data.description,
+    images: data.images,
+    videoUrls: data.videoUrls,
+    keywords: data.keywords,
     updatedById: updatedById ?? undefined,
   }
   return prisma.productDoc.upsert({
