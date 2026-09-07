@@ -24,6 +24,7 @@ import { Checkbox } from '@/components/ui/misc'
 import { apiError } from '@/lib/api-client'
 import { formatVnd } from '@/lib/order-calc'
 import { cn } from '@/lib/utils'
+import { MiniAppCell } from './miniapp-cell'
 import { useFormLookups } from '@/hooks/use-order-form'
 import { SOURCE_LABELS, useCrmProductList, useCrmProductSource, type CrmProduct } from '@/hooks/use-crm-products'
 
@@ -53,6 +54,7 @@ export function CrmProductsPage() {
   const [view, setView] = useState<'table' | 'grid'>('table')
 
   const sourceQ = useCrmProductSource()
+  const mauLink = sourceQ.data?.miniAppUrlTemplate ?? ''
   const lookups = useFormLookups()
   const listQ = useCrmProductList({
     q,
@@ -187,17 +189,22 @@ export function CrmProductsPage() {
                 <th className="px-3 py-2 text-right font-medium">Tồn</th>
                 <th className="px-3 py-2 text-left font-medium">ĐVT</th>
                 <th className="px-3 py-2 text-left font-medium">Kho</th>
+                <th className="px-3 py-2 text-right font-medium">Link Mini App</th>
                 <th className="px-3 py-2 text-right font-medium">Tài liệu</th>
               </tr>
             </thead>
             <tbody>
-              {products.map((p, i) => <Row key={`${p.code ?? p.id ?? i}`} p={p} />)}
+              {products.map((p, i) => (
+                <Row key={`${p.code ?? p.id ?? i}`} p={p} mauLink={mauLink} />
+              ))}
             </tbody>
           </table>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {products.map((p, i) => <Card key={`${p.code ?? p.id ?? i}`} p={p} />)}
+          {products.map((p, i) => (
+            <Card key={`${p.code ?? p.id ?? i}`} p={p} mauLink={mauLink} />
+          ))}
         </div>
       )}
 
@@ -240,7 +247,7 @@ function StockCell({ n }: { n: number | null }) {
     : <Badge variant="destructive">Hết hàng</Badge>
 }
 
-function Row({ p }: { p: CrmProduct }) {
+function Row({ p, mauLink }: { p: CrmProduct; mauLink: string }) {
   return (
     <tr className={cn('border-t hover:bg-accent/30', p.status === 'inactive' && 'opacity-60')}>
       <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{p.code ?? '—'}</td>
@@ -257,12 +264,13 @@ function Row({ p }: { p: CrmProduct }) {
       <td className="px-3 py-2 text-xs text-muted-foreground">
         {p.warehouseName ?? (p.warehouseId != null ? `#${p.warehouseId}` : '—')}
       </td>
+      <td className="whitespace-nowrap px-3 py-2 text-right"><MiniAppCell p={p} mauLink={mauLink} /></td>
       <td className="whitespace-nowrap px-3 py-2 text-right"><DocLink code={p.code} /></td>
     </tr>
   )
 }
 
-function Card({ p }: { p: CrmProduct }) {
+function Card({ p, mauLink }: { p: CrmProduct; mauLink: string }) {
   return (
     <div className={cn('flex flex-col gap-1 rounded-lg border bg-card p-3', p.status === 'inactive' && 'opacity-60')}>
       <div className="flex items-start justify-between gap-2">
@@ -276,6 +284,7 @@ function Card({ p }: { p: CrmProduct }) {
         <span>{p.unit ?? ''}</span>
         <DocLink code={p.code} />
       </div>
+      <MiniAppCell p={p} mauLink={mauLink} />
     </div>
   )
 }

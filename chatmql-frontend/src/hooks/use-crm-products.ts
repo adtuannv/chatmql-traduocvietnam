@@ -2,7 +2,7 @@
  * use-crm-products.ts — Sản phẩm đọc THẲNG từ CRM (không lưu ở ChatMQL).
  * Backend: GET /crm-products/search, /crm-products/source (crm-products-routes.ts).
  */
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 
 /**
@@ -56,6 +56,33 @@ export const SOURCE_LABELS: Record<CrmProductSource, string> = {
   bridge: 'Cầu nối ChatMQL ↔ CRM (service key)',
   dashboard: 'API dashboard CRM (Bearer token)',
   local: 'Bảng sản phẩm nội bộ (tạm, chờ API chính thức)',
+}
+
+/** Một mục trong danh mục sản phẩm bên Zalo Mini App. */
+export interface MiniAppItem {
+  id: string
+  name: string
+  price: number
+  active: boolean
+}
+
+/** Danh mục Mini App để chọn khi ghép — khỏi gõ tay chuỗi mã dễ sai. */
+export function useMiniAppCatalog() {
+  return useQuery<{ items: MiniAppItem[]; updatedAt: string | null }>({
+    queryKey: ['crm-products', 'miniapp-catalog'],
+    queryFn: async () => (await api.get('/crm-products/miniapp-catalog')).data,
+    staleTime: 10 * 60_000,
+  })
+}
+
+export function useSetMiniAppId() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, miniAppId }: { id: string; miniAppId: string | null }) =>
+      (await api.patch(`/crm-products/${encodeURIComponent(id)}/miniapp`, { miniAppId })).data,
+    // Danh sách sản phẩm phải tải lại để cột mã và nút Gửi cập nhật theo.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm-products'] }),
+  })
 }
 
 export function useCrmProductSource() {
