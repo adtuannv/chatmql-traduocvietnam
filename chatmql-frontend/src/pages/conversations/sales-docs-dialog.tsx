@@ -316,7 +316,6 @@ function ComposeStep({
             ? `💰 Giá: ${new Intl.NumberFormat('vi-VN').format(linked.price)}đ${linked.unit ? `/${linked.unit}` : ''}`
             : '💰 Giá: liên hệ')
         }
-        if (linked?.inventory != null && linked.inventory <= 0) lines.push('⚠️ Hiện tạm hết hàng')
         const body = [asset.description, asset.textContent].filter(Boolean).join('\n\n')
         if (body) lines.push('', body)
         if (videos.length) {

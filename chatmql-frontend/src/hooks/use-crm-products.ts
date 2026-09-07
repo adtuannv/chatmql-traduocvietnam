@@ -38,7 +38,6 @@ export interface CrmProductListParams {
   q?: string
   warehouseId?: number
   category?: string
-  inStock?: boolean
   page?: number
   pageSize?: number
 }
@@ -126,7 +125,6 @@ export function useCrmProductList(params: CrmProductListParams) {
   if (params.q?.trim()) query.q = params.q.trim()
   if (params.warehouseId != null) query.warehouseId = params.warehouseId
   if (params.category) query.category = params.category
-  if (params.inStock) query.inStock = 'true'
 
   return useQuery<CrmProductListResult>({
     queryKey: ['crm-products', 'list', query],

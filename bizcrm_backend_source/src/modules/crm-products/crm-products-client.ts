@@ -485,8 +485,6 @@ export interface ListParams {
   q?: string
   warehouseId?: number
   category?: string
-  /** Chỉ lấy hàng còn tồn — nhân viên thường chỉ quan tâm hàng bán được. */
-  inStockOnly?: boolean
   page?: number
   pageSize?: number
 }
@@ -516,7 +514,7 @@ export async function listCrmProducts(params: ListParams = {}): Promise<ListResu
     // Lọc hai thứ đó sau khi đã phân trang sẽ ra kết quả sai: trang 1 lọc còn
     // 2 dòng thì người dùng tưởng cả kho chỉ có 2. Nên khi có hai bộ lọc này
     // thì lấy trọn danh mục rồi tự lọc và cắt trang.
-    const locTaiCho = !!params.category || !!params.inStockOnly
+    const locTaiCho = !!params.category
 
     if (!locTaiCho) {
       const { rows, total } = await docTuFm(pageSize, {
@@ -532,11 +530,7 @@ export async function listCrmProducts(params: ListParams = {}): Promise<ListResu
     }
 
     const { rows } = await docTuFm(FM_LIMIT_MAX, { q: params.q })
-    const loc = rows.filter((p) => {
-      if (params.category && (p.categoryName ?? '') !== params.category) return false
-      if (params.inStockOnly && !(p.inventory != null && p.inventory > 0)) return false
-      return true
-    })
+    const loc = rows.filter((p) => !params.category || (p.categoryName ?? '') === params.category)
     return {
       source,
       products: loc.slice((page - 1) * pageSize, page * pageSize),
@@ -559,7 +553,6 @@ export async function listCrmProducts(params: ListParams = {}): Promise<ListResu
     if (needle && !`${p.name} ${p.code ?? ''}`.toLowerCase().includes(needle)) return false
     if (params.warehouseId != null && p.warehouseId != null && p.warehouseId !== params.warehouseId) return false
     if (params.category && (p.categoryName ?? '') !== params.category) return false
-    if (params.inStockOnly && !(p.inventory != null && p.inventory > 0)) return false
     return true
   })
 

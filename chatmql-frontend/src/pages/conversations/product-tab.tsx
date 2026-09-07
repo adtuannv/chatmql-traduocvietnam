@@ -171,9 +171,10 @@ function ProductCard({
             {p.priceMax != null && ` – ${formatVnd(p.priceMax)}`}
           </span>
           {p.unit && <span className="text-[11px] text-muted-foreground">/{p.unit}</span>}
-          {p.inventory != null && (
-            <Badge variant={p.inventory > 0 ? 'secondary' : 'destructive'} className="h-4 px-1 text-[9.5px]">
-              {p.inventory > 0 ? `Còn ${p.inventory}` : 'Hết hàng'}
+          {/* Chỉ khoe tồn khi có tồn thực; không có thì im, vẫn bán bình thường. */}
+          {p.inventory != null && p.inventory > 0 && (
+            <Badge variant="secondary" className="h-4 px-1 text-[9.5px]">
+              Còn {p.inventory}
             </Badge>
           )}
         </div>

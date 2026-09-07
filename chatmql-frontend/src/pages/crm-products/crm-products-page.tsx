@@ -50,7 +50,6 @@ export function CrmProductsPage() {
   const [q, setQ] = useState('')
   const [warehouseId, setWarehouseId] = useState<string>(ALL)
   const [category, setCategory] = useState<string>(ALL)
-  const [inStock, setInStock] = useState(false)
   const [page, setPage] = useState(1)
   const [view, setView] = useState<'table' | 'grid'>('table')
 
@@ -61,7 +60,6 @@ export function CrmProductsPage() {
     q,
     warehouseId: warehouseId === ALL ? undefined : Number(warehouseId),
     category: category === ALL ? undefined : category,
-    inStock,
     page,
     pageSize: PAGE_SIZE,
   })
@@ -78,12 +76,12 @@ export function CrmProductsPage() {
   const warehouses = lookups.data?.warehouses ?? []
 
   const filtering = useMemo(
-    () => q !== '' || warehouseId !== ALL || category !== ALL || inStock,
-    [q, warehouseId, category, inStock],
+    () => q !== '' || warehouseId !== ALL || category !== ALL,
+    [q, warehouseId, category],
   )
 
   const resetFilters = () => {
-    setInput(''); setQ(''); setWarehouseId(ALL); setCategory(ALL); setInStock(false); setPage(1)
+    setInput(''); setQ(''); setWarehouseId(ALL); setCategory(ALL); setPage(1)
   }
 
   return (
@@ -144,10 +142,6 @@ export function CrmProductsPage() {
           </SelectContent>
         </Select>
 
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs">
-          <Checkbox checked={inStock} onCheckedChange={(v) => { setInStock(v === true); setPage(1) }} />
-          Còn hàng
-        </label>
 
         {filtering && (
           <Button variant="ghost" size="sm" className="text-xs" onClick={resetFilters}>Bỏ lọc</Button>
@@ -244,11 +238,16 @@ function DocLink({ code }: { code: string | null }) {
   )
 }
 
+/**
+ * Chỉ hiện số tồn khi sản phẩm CÓ TỒN THỰC.
+ *
+ * Không hiện "Hết hàng" nữa: mọi sản phẩm đều bán được, hàng đặt trước hay gối
+ * vụ vẫn nhận đơn bình thường. Nguồn cũng trả tồn âm cho gần nửa danh mục nên
+ * nhãn đó vừa sai vừa làm sale ngại chào hàng.
+ */
 function StockCell({ n }: { n: number | null }) {
-  if (n == null) return <span className="text-muted-foreground">—</span>
-  return n > 0
-    ? <span className="font-semibold text-success">{formatNumber(n)}</span>
-    : <Badge variant="destructive">Hết hàng</Badge>
+  if (n == null || n <= 0) return <span className="text-muted-foreground">—</span>
+  return <span className="font-semibold text-success">{formatNumber(n)}</span>
 }
 
 function Row({ p, mauLink }: { p: CrmProduct; mauLink: string }) {

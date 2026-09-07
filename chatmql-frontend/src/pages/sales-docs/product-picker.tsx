@@ -57,9 +57,9 @@ export function ProductPicker({ value, onChange }: Props) {
                   {p ? p.name : linkedQ.isLoading ? 'Đang tải…' : <span className="text-muted-foreground">Không thấy mã này ở hệ thống nguồn</span>}
                 </span>
                 {p?.price != null && <span className="shrink-0 font-medium tabular-nums">{formatVnd(p.price)}</span>}
-                {p?.inventory != null && (
-                  <Badge variant={p.inventory > 0 ? 'secondary' : 'destructive'} className="shrink-0 text-[9px]">
-                    {p.inventory > 0 ? `Tồn ${p.inventory}` : 'Hết hàng'}
+                {p?.inventory != null && p.inventory > 0 && (
+                  <Badge variant="secondary" className="shrink-0 text-[9px]">
+                    Tồn {p.inventory}
                   </Badge>
                 )}
                 <button type="button" onClick={() => remove(code)} aria-label={`Bỏ ghép nối ${code}`} className="shrink-0 text-muted-foreground hover:text-destructive">

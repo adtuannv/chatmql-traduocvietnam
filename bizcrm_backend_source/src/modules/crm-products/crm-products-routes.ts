@@ -80,7 +80,7 @@ export async function crmProductRoutes(app: FastifyInstance): Promise<void> {
 
   /** Danh sách để duyệt — không cần gõ từ khoá. */
   app.get<{
-    Querystring: { q?: string; warehouseId?: string; category?: string; inStock?: string; page?: string; pageSize?: string }
+    Querystring: { q?: string; warehouseId?: string; category?: string; page?: string; pageSize?: string }
   }>('/api/v1/crm-products', async (request, reply) => {
     const qy = request.query
     const int = (v?: string) => {
@@ -93,7 +93,6 @@ export async function crmProductRoutes(app: FastifyInstance): Promise<void> {
         q: qy.q,
         warehouseId: int(qy.warehouseId),
         category: qy.category || undefined,
-        inStockOnly: qy.inStock === 'true',
         page: int(qy.page),
         pageSize: int(qy.pageSize),
       })

@@ -442,10 +442,8 @@ function ProductDetailView({ code }: { code: string }) {
           {/* Dữ liệu gốc — chỉ đọc, thuộc hệ thống nguồn. */}
           <div className="flex flex-wrap items-center gap-2">
             {p && <span className="text-2xl font-bold text-primary">{priceText(p)}</span>}
-            {p?.inventory != null && (
-              p.inventory > 0
-                ? <Badge variant="secondary">Tồn {p.inventory}{p.unit ? ` ${p.unit}` : ''}</Badge>
-                : <Badge variant="destructive">Hết hàng</Badge>
+            {p?.inventory != null && p.inventory > 0 && (
+              <Badge variant="secondary">Tồn {p.inventory}{p.unit ? ` ${p.unit}` : ''}</Badge>
             )}
             {p?.vatNote && <Badge variant="outline">{p.vatNote}</Badge>}
           </div>

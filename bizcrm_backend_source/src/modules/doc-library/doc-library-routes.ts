@@ -80,8 +80,9 @@ async function buildProductMessage(a: {
       const price = p.price != null
         ? `${new Intl.NumberFormat('vi-VN').format(p.price)}đ${p.unit ? `/${p.unit}` : ''}`
         : 'liên hệ'
+      // Không báo "hết hàng" cho khách: mọi sản phẩm đều nhận đơn, hàng đặt
+      // trước hay gối vụ vẫn bán bình thường.
       lines.push(`💰 Giá: ${price}`)
-      if (p.inventory != null && p.inventory <= 0) lines.push('⚠️ Hiện tạm hết hàng')
     } catch {
       // Hệ thống nguồn không phản hồi — bỏ giá, vẫn gửi phần giới thiệu.
     }

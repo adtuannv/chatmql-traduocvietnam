@@ -130,9 +130,9 @@ export function DocAssetDetailDialog({ asset, open, onOpenChange }: Props) {
                   <span className="shrink-0 font-medium tabular-nums">
                     {p.price != null ? formatVnd(p.price) : 'Liên hệ'}
                   </span>
-                  {p.inventory != null && (
-                    <Badge variant={p.inventory > 0 ? 'secondary' : 'destructive'} className="shrink-0 text-[9px]">
-                      {p.inventory > 0 ? `Tồn ${p.inventory}` : 'Hết hàng'}
+                  {p.inventory != null && p.inventory > 0 && (
+                    <Badge variant="secondary" className="shrink-0 text-[9px]">
+                      Tồn {p.inventory}
                     </Badge>
                   )}
                   <CopyButton
