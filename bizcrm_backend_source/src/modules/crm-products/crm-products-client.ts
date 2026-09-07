@@ -11,7 +11,10 @@
  *                   của MỘT tài khoản CRM. Token này hết hạn theo phiên đăng
  *                   nhập nên chỉ hợp cho thử nghiệm, trừ khi CRM cấp token
  *                   dịch vụ dài hạn.
- *   3. `local`    → bảng `products` nội bộ — danh mục thật đã có sẵn trong hệ
+ *   3. `official` → FM backend của TDVN, /api/products/external/list, xác thực
+ *                   bằng header x-api-key. ĐÂY LÀ NGUỒN CHÍNH THỨC — khi chạy
+ *                   được thì các nguồn còn lại chỉ còn để dự phòng.
+ *   4. `local`    → bảng `products` nội bộ — danh mục thật đã có sẵn trong hệ
  *                   thống, dùng khi CRM chưa mở API. Đây là NGUỒN TẠM: khi
  *                   TDVN cấp API chính thức thì đổi biến môi trường sang
  *                   bridge/dashboard, bảng nội bộ sẽ bỏ. Vì vậy dữ liệu vẫn đi
@@ -26,10 +29,15 @@ import { fetchProductCatalog } from '../orders/crm-order-client.js'
 const TIMEOUT_MS = 15_000
 
 /** Nguồn dữ liệu đang bật. Thiếu cấu hình dashboard thì tự về bridge. */
-export type CrmProductSource = 'bridge' | 'dashboard' | 'local'
+export type CrmProductSource = 'bridge' | 'dashboard' | 'local' | 'official'
 
 export function resolveSource(): CrmProductSource {
   const want = (process.env.CRM_PRODUCT_SOURCE || '').toLowerCase()
+  // Nguồn chính thức chỉ bật khi có ĐỦ địa chỉ và khoá — thiếu một trong hai
+  // thì rơi về nguồn khác còn hơn để giao diện trống trơn không rõ lý do.
+  if (want === 'official' && process.env.FM_PRODUCT_API_URL && process.env.FM_PRODUCT_API_KEY) {
+    return 'official'
+  }
   if (want === 'dashboard' && process.env.CRM_DASHBOARD_TOKEN) return 'dashboard'
   if (want === 'local') return 'local'
   return 'bridge'
@@ -271,6 +279,52 @@ async function searchViaLocal(orgId: string, q: string, limit: number): Promise<
   })
 }
 
+/**
+ * Đọc từ FM backend — hệ thống sản phẩm chính thức của TDVN.
+ *
+ * Chưa biết chắc FM đặt tên trường thế nào, nhưng `normalizeProduct` vốn dò
+ * theo danh sách khoá ứng viên nên phần lớn sẽ khớp ngay; lệch chỗ nào thì bổ
+ * sung tên khoá vào đó chứ không phải sửa chỗ khác. Khoá thật của bản ghi vẫn
+ * nằm nguyên trong `raw`.
+ */
+async function docTuFm(limit: number): Promise<CrmProduct[]> {
+  const base = (process.env.FM_PRODUCT_API_URL || '').replace(/\/$/, '')
+  const key = process.env.FM_PRODUCT_API_KEY || ''
+  if (!base || !key) throw new Error('FM_PRODUCT_API_URL hoặc FM_PRODUCT_API_KEY chưa cấu hình')
+
+  const url = `${base}/api/products/external/list?limit=${Math.min(1000, Math.max(1, limit))}`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const res = await fetch(url, {
+      headers: { accept: 'application/json', 'x-api-key': key },
+      signal: controller.signal,
+    })
+    const text = await res.text()
+    if (!res.ok) {
+      const hint = res.status === 401 || res.status === 403
+        ? 'Khoá FM_PRODUCT_API_KEY sai hoặc đã đổi.'
+        : text.slice(0, 200)
+      throw new Error(`FM trả lỗi ${res.status}: ${hint}`)
+    }
+    const rows = extractRows(text ? JSON.parse(text) : null)
+    if (!rows.length && text) {
+      logger.warn({ sample: text.slice(0, 300) }, '[crm-products] không bóc được mảng sản phẩm từ FM')
+    } else if (rows.length) {
+      // Ghi khoá thật một lần để chỉnh normalizeProduct nếu tên trường lệch.
+      logger.debug({ keys: Object.keys(rows[0]) }, '[crm-products] khoá dữ liệu FM')
+    }
+    return rows.map(normalizeProduct)
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`FM không phản hồi trong ${TIMEOUT_MS / 1000}s`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function searchViaBridge(q: string, limit: number, warehouseId?: number): Promise<CrmProduct[]> {
   // Bridge trả cả danh mục theo kho; lọc theo từ khoá ngay tại backend.
   const { products } = await fetchProductCatalog({ q: q || undefined, warehouseId })
@@ -298,12 +352,26 @@ export async function searchCrmProducts(
 ): Promise<{ source: CrmProductSource; products: CrmProduct[] }> {
   const source = resolveSource()
   const safeLimit = Math.min(100, Math.max(1, limit))
-  const products = source === 'dashboard'
-    ? await searchViaDashboard(q, safeLimit)
-    : source === 'local'
-      ? await searchViaLocal(requireOrg(orgId), q, safeLimit)
-      : await searchViaBridge(q, safeLimit)
+  let products: CrmProduct[]
+  if (source === 'official') {
+    // FM chưa có tham số tìm kiếm nên lấy rộng rồi lọc tại đây.
+    const tat_ca = await docTuFm(1000)
+    products = locTheoTuKhoa(tat_ca, q).slice(0, safeLimit)
+  } else if (source === 'dashboard') {
+    products = await searchViaDashboard(q, safeLimit)
+  } else if (source === 'local') {
+    products = await searchViaLocal(requireOrg(orgId), q, safeLimit)
+  } else {
+    products = await searchViaBridge(q, safeLimit)
+  }
   return { source, products }
+}
+
+/** Lọc theo tên hoặc mã, dùng cho nguồn không tự tìm kiếm được. */
+function locTheoTuKhoa(rows: CrmProduct[], q: string): CrmProduct[] {
+  const needle = q.trim().toLowerCase()
+  if (!needle) return rows
+  return rows.filter((p) => `${p.name} ${p.code ?? ''}`.toLowerCase().includes(needle))
 }
 
 /** Nguồn nội bộ mà thiếu tổ chức là lỗi lập trình, không phải lỗi cấu hình. */
@@ -344,11 +412,13 @@ export async function listCrmProducts(params: ListParams = {}): Promise<ListResu
   const page = Math.max(1, params.page ?? 1)
   const pageSize = Math.min(200, Math.max(1, params.pageSize ?? 50))
 
-  const all = source === 'dashboard'
-    ? await searchViaDashboard(params.q ?? '', 200)
-    : source === 'local'
-      ? await searchViaLocal(requireOrg(params.orgId), '', 1000)
-      : await searchViaBridge('', 1000, params.warehouseId)
+  const all = source === 'official'
+    ? await docTuFm(1000)
+    : source === 'dashboard'
+      ? await searchViaDashboard(params.q ?? '', 200)
+      : source === 'local'
+        ? await searchViaLocal(requireOrg(params.orgId), '', 1000)
+        : await searchViaBridge('', 1000, params.warehouseId)
 
   const needle = (params.q ?? '').trim().toLowerCase()
   let rows = all.filter((p) => {
