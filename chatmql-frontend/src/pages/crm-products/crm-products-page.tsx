@@ -1,17 +1,19 @@
 /**
  * crm-products-page.tsx — Module "Sản phẩm (CRM)": DANH SÁCH SẢN PHẨM CHÍNH THỨC.
  *
- * ChatMQL không sở hữu dữ liệu ở đây. Danh sách lấy thẳng từ hệ thống nguồn
- * (CRM hôm nay, hệ thống gốc TDVN sau này) nên giá và tồn kho luôn là số thật,
- * không có bản sao để lệch. Vì vậy trang này chỉ để duyệt/tra cứu, không có
- * thêm/sửa/xoá — muốn đổi sản phẩm thì đổi ở hệ thống nguồn.
+ * Danh sách lấy thẳng từ hệ thống nguồn nên giá và tồn kho luôn là số thật,
+ * không có bản sao để lệch. Những trường đó CHỈ ĐỌC — muốn đổi thì đổi ở hệ
+ * thống nguồn, sửa ở đây sẽ bị lần đồng bộ sau ghi đè.
  *
- * Tri thức bán hàng của sản phẩm (ảnh, mô tả, video) KHÔNG nằm ở đây mà thuộc
- * module "Tài liệu bán hàng", gắn theo MÃ sản phẩm — xem docs/cau-truc-du-lieu-san-pham.md.
+ * Bấm một dòng thì bung chi tiết ngay tại chỗ, và phần ChatMQL sở hữu (mô tả
+ * bán hàng, từ khoá, ảnh, video, mã Mini App) sửa và lưu luôn ở đó — người
+ * dùng thường xem rồi sửa liên tiếp nhiều sản phẩm, bắt nhảy trang mỗi lần là
+ * mất mạch. Phần này lưu vào tài liệu sản phẩm, gắn theo MÃ — xem
+ * docs/cau-truc-du-lieu-san-pham.md.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
+import { ChevronRight,
   FileText, Grid2x2, List as ListIcon, Loader2, PackageSearch, RefreshCw, Search, ServerCog,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
@@ -25,6 +27,7 @@ import { apiError } from '@/lib/api-client'
 import { formatVnd } from '@/lib/order-calc'
 import { cn } from '@/lib/utils'
 import { MiniAppCell } from './miniapp-cell'
+import { ProductRowDetail } from './product-row-detail'
 import { SourceSwitch } from './source-switch'
 import { useFormLookups } from '@/hooks/use-order-form'
 import { SOURCE_LABELS, useCrmProductList, useCrmProductSource, type CrmProduct } from '@/hooks/use-crm-products'
@@ -54,6 +57,8 @@ export function CrmProductsPage() {
   const [view, setView] = useState<'table' | 'grid'>('table')
 
   const sourceQ = useCrmProductSource()
+  /** Mã (hoặc id) của dòng đang bung chi tiết; chỉ mở một dòng để bảng khỏi rối. */
+  const [dongMo, setDongMo] = useState<string | null>(null)
   const mauLink = sourceQ.data?.miniAppUrlTemplate ?? ''
   const lookups = useFormLookups()
   const listQ = useCrmProductList({
@@ -192,9 +197,22 @@ export function CrmProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {products.map((p, i) => (
-                <Row key={`${p.code ?? p.id ?? i}`} p={p} mauLink={mauLink} />
-              ))}
+              {products.map((p, i) => {
+                const khoa = `${p.code ?? p.id ?? i}`
+                return (
+                  <Fragment key={khoa}>
+                    <Row
+                      p={p}
+                      mauLink={mauLink}
+                      dangMo={dongMo === khoa}
+                      onToggle={() => setDongMo(dongMo === khoa ? null : khoa)}
+                    />
+                    {dongMo === khoa && (
+                      <ProductRowDetail p={p} mauLink={mauLink} soCot={9} />
+                    )}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -250,10 +268,25 @@ function StockCell({ n }: { n: number | null }) {
   return <span className="font-semibold text-success">{formatNumber(n)}</span>
 }
 
-function Row({ p, mauLink }: { p: CrmProduct; mauLink: string }) {
+function Row({
+  p, mauLink, dangMo, onToggle,
+}: { p: CrmProduct; mauLink: string; dangMo: boolean; onToggle: () => void }) {
   return (
-    <tr className={cn('border-t hover:bg-accent/30', p.status === 'inactive' && 'opacity-60')}>
-      <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{p.code ?? '—'}</td>
+    <tr
+      onClick={onToggle}
+      className={cn(
+        'cursor-pointer border-t hover:bg-accent/30',
+        dangMo && 'bg-accent/40',
+        p.status === 'inactive' && 'opacity-60',
+      )}
+    >
+      <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
+        <span className="inline-flex items-center gap-1.5">
+          <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
+                                      dangMo && 'rotate-90')} />
+          {p.code ?? '—'}
+        </span>
+      </td>
       <td className="px-3 py-2">
         <div className="font-medium">{p.name}</div>
         {(p.vatNote || p.brand) && (
@@ -267,8 +300,12 @@ function Row({ p, mauLink }: { p: CrmProduct; mauLink: string }) {
       <td className="px-3 py-2 text-xs text-muted-foreground">
         {p.warehouseName ?? (p.warehouseId != null ? `#${p.warehouseId}` : '—')}
       </td>
-      <td className="whitespace-nowrap px-3 py-2 text-right"><MiniAppCell p={p} mauLink={mauLink} /></td>
-      <td className="whitespace-nowrap px-3 py-2 text-right"><DocLink code={p.code} /></td>
+      <td className="whitespace-nowrap px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+        <MiniAppCell p={p} mauLink={mauLink} />
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+        <DocLink code={p.code} />
+      </td>
     </tr>
   )
 }
