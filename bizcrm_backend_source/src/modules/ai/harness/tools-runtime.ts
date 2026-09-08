@@ -13,6 +13,7 @@ import { aggregate } from '../../products/product-query-service.js'
 import { TOOL_NAMES, type ToolName, type ToolsConfig } from '../tools-config-service.js'
 import type { OpenaiToolDef } from '../providers/openai.js'
 import { retrieveProductDocs } from '../../product-docs/product-docs-service.js'
+import { retrieveDocAssets } from '../../doc-library/doc-library-service.js'
 import { prisma } from '../../../shared/prisma-client.js'
 import { isImageAvailable } from '../../chat/send-image-core.js'
 
@@ -215,6 +216,34 @@ export function formatOrders(
   }).join('\n')
 }
 
+/**
+ * Gửi TÀI LIỆU trong thư viện bán hàng: biểu giá, hồ sơ chứng nhận, chính sách.
+ *
+ * Khác `send_product_image` ở chỗ đó là ảnh của một mặt hàng, còn đây là tài
+ * liệu dùng chung. Trước khi có công cụ này, khách hỏi "cho xin bảng giá" thì
+ * AI viết cả đoạn dài mô tả bằng chữ, trong khi thư viện có sẵn 5 tấm biểu giá
+ * nằm đó mà không gửi được — hoặc tệ hơn, nó gọi nhầm sang gửi ảnh sản phẩm.
+ */
+export const SEND_DOC_TOOL = 'send_document'
+const SEND_DOC_DEF: OpenaiToolDef = {
+  type: 'function',
+  function: {
+    name: SEND_DOC_TOOL,
+    description:
+      'Gửi TÀI LIỆU có sẵn trong thư viện bán hàng cho khách: bảng giá / biểu giá, hồ sơ chứng nhận, ' +
+      'chính sách, tài liệu giới thiệu. Dùng NGAY khi khách xin bảng giá, xin hồ sơ, xin giấy chứng nhận, ' +
+      'xin tài liệu — gửi luôn thay vì mô tả dài bằng chữ. Không có tài liệu phù hợp thì công cụ báo lại.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Thứ khách cần, bằng tiếng Việt (vd "bảng giá tất cả sản phẩm", "hồ sơ chứng nhận")' },
+        caption: { type: 'string', description: 'Lời nhắn ngắn gửi kèm (tuỳ chọn)' },
+      },
+      required: ['query'],
+    },
+  },
+}
+
 export function buildOpenaiTools(tools: ToolsConfig): OpenaiToolDef[] {
   const search = TOOL_NAMES.filter((n) => tools[n].enabled).map((n) => ({
     type: 'function' as const,
@@ -231,7 +260,7 @@ export function buildOpenaiTools(tools: ToolsConfig): OpenaiToolDef[] {
     ...search,
     ...(anySearch ? [CATALOG_OVERVIEW_DEF, LOG_GAP_DEF] : []),
     ...(canSendImage ? [SEND_IMAGE_DEF] : []),
-    HANDOFF_DEF, APPOINTMENT_DEF, ORDER_DEF, LOOKUP_ORDER_DEF,
+    HANDOFF_DEF, APPOINTMENT_DEF, ORDER_DEF, LOOKUP_ORDER_DEF, SEND_DOC_DEF,
   ]
 }
 
@@ -320,6 +349,35 @@ export type ProductImageLookup =
  * Trả về null nếu không tìm thấy hoặc sản phẩm chưa có ảnh; khi đó AI được báo
  * lại để nó tự nói với khách thay vì im lặng.
  */
+/** Tài liệu trong thư viện có tệp gửi được cho khách. */
+export interface TaiLieuGuiDuoc {
+  id: string
+  title: string
+  fileUrl: string
+}
+
+/**
+ * Tìm tài liệu khớp yêu cầu và có tệp thật để gửi.
+ *
+ * Dùng chung bộ xếp hạng của thư viện nên "bảng giá" khớp được tài liệu đặt tên
+ * "Biểu giá". Không có tệp thì coi như không gửi được — thà báo không có còn
+ * hơn gửi một bản ghi rỗng.
+ */
+export async function timTaiLieuGui(orgId: string, query: string): Promise<TaiLieuGuiDuoc[]> {
+  const rows = await retrieveDocAssets(orgId, query, 5)
+  const ids = rows.filter((r) => r.sendable).map((r) => r.id)
+  if (!ids.length) return []
+  const day = await prisma.docAsset.findMany({
+    where: { orgId, id: { in: ids }, visibility: 'sales' },
+    select: { id: true, title: true, fileUrl: true, images: true },
+  })
+  const thuTu = new Map(ids.map((id, i) => [id, i]))
+  return day
+    .map((d) => ({ id: d.id, title: d.title, fileUrl: d.fileUrl || d.images[0] || '' }))
+    .filter((d) => !!d.fileUrl)
+    .sort((a, b) => (thuTu.get(a.id) ?? 99) - (thuTu.get(b.id) ?? 99))
+}
+
 export async function resolveProductImage(
   orgId: string,
   query: string,

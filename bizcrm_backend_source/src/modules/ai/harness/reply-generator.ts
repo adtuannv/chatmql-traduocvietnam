@@ -31,7 +31,7 @@ import { buildGeneratorPrompt, buildAgentSystemPrompt } from '../prompts/auto-re
 import { buildCriticPrompt, parseCriticVerdict } from '../prompts/critic.js'
 import { getToolsConfig, buildToolScopeNote, type ToolsConfig } from '../tools-config-service.js'
 import { thayBien } from '../runtime-context.js'
-import { buildOpenaiTools, executeTool, resolveProductImage, formatOrders, HANDOFF_TOOL, APPOINTMENT_TOOL, ORDER_TOOL, LOOKUP_ORDER_TOOL, LOG_GAP_TOOL, SEND_IMAGE_TOOL, type ResolvedProductImage } from './tools-runtime.js'
+import { buildOpenaiTools, executeTool, resolveProductImage, formatOrders, HANDOFF_TOOL, APPOINTMENT_TOOL, ORDER_TOOL, LOOKUP_ORDER_TOOL, LOG_GAP_TOOL, SEND_IMAGE_TOOL, SEND_DOC_TOOL, timTaiLieuGui, type ResolvedProductImage } from './tools-runtime.js'
 import { prisma } from '../../../shared/prisma-client.js'
 import { fetchCustomerOrders } from '../../orders/crm-order-client.js'
 import { recordPendingAction } from '../pending-action-service.js'
@@ -254,6 +254,34 @@ async function runAgentLoop(args: {
               caption: typeof a.caption === 'string' ? a.caption.trim() : undefined,
             })
             result = `THÀNH CÔNG: ảnh "${found.image.productName}" sẽ được gửi cho khách ngay sau tin nhắn này. Không cần mô tả lại ảnh, cũng đừng dán link.`
+          }
+        }
+      } else if (tc.name === SEND_DOC_TOOL) {
+        // Gom cùng hàng đợi với ảnh sản phẩm: gửi sau khi câu trả lời đã thật
+        // sự ra kênh, để không có cảnh tài liệu bay sang khách mà tin nhắn thì
+        // bị chặn ở bước sau.
+        const a = (parsedArgs ?? {}) as { query?: unknown; caption?: unknown }
+        const muon = typeof a.query === 'string' ? a.query.trim() : ''
+        if (!muon) {
+          result = 'Thiếu tham số "query".'
+        } else if (pendingImages.length >= MAX_REPLY_IMAGES) {
+          result = `Đã đạt giới hạn ${MAX_REPLY_IMAGES} tệp mỗi lượt trả lời.`
+        } else {
+          const ds = await timTaiLieuGui(args.orgId, muon)
+          const moi = ds.find((d) => !pendingImages.some((p) => p.productId === d.id))
+          if (!moi) {
+            result =
+              `THẤT BẠI: thư viện không có tài liệu nào khớp "${muon}". TỆP KHÔNG ĐƯỢC GỬI.\n` +
+              'TUYỆT ĐỐI KHÔNG nói "em gửi rồi" hay "em gửi ngay" — khách sẽ chờ một thứ không bao giờ tới. ' +
+              'Hãy nói thật là em chưa có sẵn tài liệu này, em kiểm tra rồi gửi anh/chị sau.'
+          } else {
+            pendingImages.push({
+              productId: moi.id,
+              productName: moi.title,
+              imageUrl: moi.fileUrl,
+              caption: typeof a.caption === 'string' ? a.caption.trim() : undefined,
+            })
+            result = `THÀNH CÔNG: tài liệu "${moi.title}" sẽ được gửi ngay sau tin nhắn này. KHÔNG mô tả lại nội dung tài liệu bằng chữ, không dán link — chỉ báo ngắn là em gửi rồi.`
           }
         }
       } else if (tc.name === LOG_GAP_TOOL) {
