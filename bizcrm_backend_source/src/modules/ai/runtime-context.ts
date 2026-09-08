@@ -23,6 +23,7 @@ import { PlatformLabel } from '../../shared/constants.js'
 export const MUI_GIO = 'Asia/Ho_Chi_Minh'
 
 export interface RuntimeContext {
+  /** Tên NGƯỜI để xưng với khách, đã cắt đuôi thương hiệu. */
   account_name: string
   account_role: string
   channel_name: string
@@ -31,6 +32,23 @@ export interface RuntimeContext {
   customer_name: string
   customer_phone: string
   customer_id: string
+}
+
+/**
+ * Cắt phần thương hiệu khỏi tên nick để lấy TÊN NGƯỜI.
+ *
+ * Nick Zalo đặt tên kiểu "Hoài Chang Trà Dược Việt Nam" hay "Kim Ngân - Trà
+ * Dược Việt Nam" để khách nhìn là biết của công ty nào. Nhưng khi AI tự giới
+ * thiệu thì "em là Hoài Chang Trà Dược Việt Nam ạ" nghe như đọc bảng hiệu.
+ * Khách hỏi "em tên gì" là muốn biết tên người đang nhắn với mình.
+ *
+ * Cắt không ra gì thì giữ nguyên tên đầy đủ — thà dài còn hơn rỗng.
+ */
+const DUOI_THUONG_HIEU = /[\s\-–—|·,]*(tr[àa]\s*d[ưu][ợo]c\s*vi[ệe]t\s*nam|tr[àa]\s*d[ưu][ợo]c|tdvn|cco\s*tdvn)\s*$/i
+
+export function tenNguoi(tenNick: string): string {
+  const cat = tenNick.replace(DUOI_THUONG_HIEU, '').trim().replace(/[\-–—|·,]+$/, '').trim()
+  return cat || tenNick.trim()
 }
 
 /** Mã khách CRM nếu bản ghi liên hệ có lưu sẵn. */
@@ -82,7 +100,7 @@ export async function layRuntimeContext(convId: string): Promise<RuntimeContext>
     const ct = conv.contact
     return {
       ...trong,
-      account_name: acc?.displayName?.trim() ?? '',
+      account_name: acc?.displayName ? tenNguoi(acc.displayName) : '',
       // Nick nào cũng là người bán hàng; số điện thoại giúp phân biệt các nick
       // trùng tên khi nhân viên đọc lại nhật ký.
       account_role: acc ? `Nhân viên tư vấn bán hàng${acc.phone ? ` (${acc.phone})` : ''}` : '',

@@ -5,7 +5,7 @@
  * khách nhắn nick A lại được giới thiệu là nhân viên B, hoặc AI nói sai tháng.
  */
 import { describe, it, expect } from 'vitest'
-import { thayBien, khoiRuntimeContext, MUI_GIO, type RuntimeContext } from './runtime-context.js'
+import { thayBien, khoiRuntimeContext, tenNguoi, MUI_GIO, type RuntimeContext } from './runtime-context.js'
 
 const rc: RuntimeContext = {
   account_name: 'Hoài Chang Trà Dược Việt Nam',
@@ -58,5 +58,26 @@ describe('khoiRuntimeContext', () => {
     const k = khoiRuntimeContext(rc)
     expect(k).toContain('Hoài Chang Trà Dược Việt Nam')
     expect(k).toMatch(/KHÔNG lấy tên/)
+  })
+})
+
+describe('tenNguoi', () => {
+  it('cắt đuôi thương hiệu để lấy tên người', () => {
+    const ca: Array<[string, string]> = [
+      ['Hoài Chang Trà Dược Việt Nam', 'Hoài Chang'],
+      ['Kim Ngân - Trà Dược Việt Nam', 'Kim Ngân'],
+      ['Ngọc Thảo Trà Dược Việt Nam', 'Ngọc Thảo'],
+      ['Ngô Tuấn Cco Tdvn', 'Ngô Tuấn'],
+      ['Vận Đơn Trà Dược Việt Nam', 'Vận Đơn'],
+    ]
+    for (const [nick, mong] of ca) expect(tenNguoi(nick)).toBe(mong)
+  })
+
+  it('tên không có đuôi thương hiệu thì giữ nguyên', () => {
+    expect(tenNguoi('Tuấn Evo Miniapp')).toBe('Tuấn Evo Miniapp')
+  })
+
+  it('cắt hết thì trả về tên gốc, không trả rỗng', () => {
+    expect(tenNguoi('Trà Dược Việt Nam')).toBe('Trà Dược Việt Nam')
   })
 })
