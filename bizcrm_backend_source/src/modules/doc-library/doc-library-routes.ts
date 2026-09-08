@@ -97,6 +97,34 @@ async function buildProductMessage(a: {
   return lines.join('\n')
 }
 
+/**
+ * Địa chỉ nội bộ — máy chủ KHÔNG được tự gọi tới.
+ *
+ * Gồm localhost, dải mạng riêng, link-local (169.254.x.x là nơi các nhà cung
+ * cấp đám mây để thông tin định danh máy chủ), và tên miền không có dấu chấm
+ * như "redis" hay "postgres" — trong Docker chúng trỏ thẳng vào container khác.
+ */
+export function laDiaChiNoiBo(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, '')
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true
+  if (!h.includes('.') && !h.includes(':')) return true
+  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')) return true
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h)
+  if (!m) return false
+  const [a, b] = [Number(m[1]), Number(m[2])]
+  return a === 0 || a === 10 || a === 127
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168)
+    || (a === 169 && b === 254)
+    || (a === 100 && b >= 64 && b <= 127)
+}
+
+/** Đuôi tệp suy từ kiểu nội dung máy chủ nguồn khai báo. */
+const EXT_THEO_MIME: Record<string, string> = {
+  'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png',
+  'image/gif': '.gif', 'image/webp': '.webp', 'application/pdf': '.pdf',
+}
+
 export async function docLibraryRoutes(app: FastifyInstance): Promise<void> {
   await app.register(multipart, { limits: { fileSize: MAX_FILE_SIZE } })
   app.addHook('preHandler', authMiddleware)
@@ -218,6 +246,74 @@ export async function docLibraryRoutes(app: FastifyInstance): Promise<void> {
       mimeType: file.mimetype,
       fileSize: buffer.length,
       originalName: file.filename,
+    }
+  })
+
+  /**
+   * Tải tệp về từ MỘT ĐƯỜNG DẪN thay vì chọn tệp trên máy.
+   *
+   * Vì sao phải tải về chứ không lưu nguyên link: link ngoài chết lúc nào không
+   * biết, và Zalo phải tải được tệp thì mới hiện ảnh cho khách. Lưu link là hôm
+   * nay chạy, vài tháng sau ảnh biến mất khỏi mọi hội thoại đã gửi.
+   *
+   * ⚠️ Đây là chỗ máy chủ tự gọi ra một địa chỉ do người dùng nhập, nên phải
+   * chặn địa chỉ nội bộ. Không chặn thì ai có tài khoản cũng dò được dịch vụ
+   * trong mạng riêng qua chính máy chủ này.
+   */
+  app.post<{ Body: { url?: string } }>('/api/v1/doc-library/upload-from-url', async (request, reply) => {
+    const u = guard(request, reply); if (!u) return
+    const dau = (request.body?.url || '').trim()
+    if (!dau) return fail(reply, 400, 'Thiếu đường dẫn ảnh')
+
+    let dia: URL
+    try { dia = new URL(dau) } catch { return fail(reply, 400, 'Đường dẫn không hợp lệ') }
+    if (dia.protocol !== 'http:' && dia.protocol !== 'https:') {
+      return fail(reply, 400, 'Chỉ nhận đường dẫn http hoặc https')
+    }
+    if (laDiaChiNoiBo(dia.hostname)) {
+      return fail(reply, 400, 'Không tải được từ địa chỉ nội bộ')
+    }
+
+    let res: Response
+    try {
+      res = await fetch(dia, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(15_000),
+        headers: { accept: 'image/*,application/pdf;q=0.9,*/*;q=0.5' },
+      })
+    } catch (err) {
+      const ly = err instanceof Error && err.name === 'TimeoutError'
+        ? 'Máy chủ nguồn không phản hồi trong 15 giây'
+        : 'Không kết nối được tới đường dẫn'
+      return fail(reply, 400, ly)
+    }
+    if (!res.ok) return fail(reply, 400, `Đường dẫn trả lỗi ${res.status}`)
+
+    // Chuyển hướng có thể dẫn ngược về nội bộ — kiểm tra lại địa chỉ cuối cùng.
+    try {
+      if (laDiaChiNoiBo(new URL(res.url).hostname)) {
+        return fail(reply, 400, 'Đường dẫn chuyển hướng về địa chỉ nội bộ')
+      }
+    } catch { /* res.url lạ thì bỏ qua, phần dưới vẫn kiểm kiểu nội dung */ }
+
+    const loai = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+    const ext = EXT_THEO_MIME[loai]
+    if (!ext) {
+      return fail(reply, 400, `Đường dẫn không phải tệp hỗ trợ (nhận về "${loai || 'không rõ'}")`)
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer())
+    if (!buffer.length) return fail(reply, 400, 'Tệp tải về rỗng')
+    if (buffer.length > MAX_FILE_SIZE) return fail(reply, 400, 'Tệp tối đa 25MB')
+
+    const filename = `${u.orgId}-${randomUUID().slice(0, 8)}${ext}`
+    await writeFile(path.join(DOC_ASSETS_DIR, filename), buffer)
+    return {
+      url: `/uploads/doc-assets/${filename}`,
+      kind: EXT_KIND[ext],
+      mimeType: loai,
+      fileSize: buffer.length,
+      originalName: path.basename(new URL(dau).pathname) || `tai-ve${ext}`,
     }
   })
 

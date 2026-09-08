@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   FileText, Film, Image as ImageIcon, Link2, Loader2, Package, Type, Upload, X,
+  Link as LinkIcon,
 } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -28,7 +29,7 @@ import { apiError } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { ProductPicker } from './product-picker'
 import {
-  VISIBILITY_LABELS, assetUrl, useSaveDocAsset, useUploadDocFile,
+  VISIBILITY_LABELS, assetUrl, useSaveDocAsset, useUploadDocFile, useUploadDocFromUrl,
   type AssetKind, type DocAsset, type DocFolder, type Visibility,
 } from '@/hooks/use-doc-library'
 
@@ -64,7 +65,26 @@ interface Props {
 export function DocAssetDialog({ asset, folders, defaultFolderId, open, onOpenChange }: Props) {
   const save = useSaveDocAsset()
   const upload = useUploadDocFile()
+  const taiTuLink = useUploadDocFromUrl()
+  const [linkAnh, setLinkAnh] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  /**
+   * Lấy ảnh từ đường dẫn. Máy chủ tải tệp về rồi trả đường dẫn nội bộ — không
+   * lưu link ngoài, vì link ngoài chết là ảnh biến mất khỏi mọi hội thoại đã gửi.
+   */
+  const themTuLink = () => {
+    const u = linkAnh.trim()
+    if (!u) return
+    taiTuLink.mutate(u, {
+      onSuccess: (r) => {
+        setImages((prev) => [...prev, r.url])
+        setLinkAnh('')
+        toast.success('Đã tải ảnh về hệ thống')
+      },
+      onError: (e) => toast.error(apiError(e)),
+    })
+  }
 
   // null = đang ở bước chọn loại. Sửa tài nguyên cũ thì bỏ qua bước này.
   const [kind, setKind] = useState<AssetKind | null>(null)
@@ -268,13 +288,30 @@ export function DocAssetDialog({ asset, folders, defaultFolderId, open, onOpenCh
           {isProduct && (
             <>
               <div className="grid gap-1.5">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label>Hình ảnh ({images.length})</Label>
-                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5"
-                    onClick={() => fileRef.current?.click()} disabled={upload.isPending}>
-                    {upload.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
-                    Tải ảnh lên
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    {/* Dán link rồi máy chủ tải về — nhanh hơn tải xuống máy
+                        rồi tải lên lại, mà ảnh vẫn nằm trên hệ thống mình. */}
+                    <Input
+                      value={linkAnh}
+                      onChange={(e) => setLinkAnh(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); themTuLink() } }}
+                      placeholder="Dán link ảnh rồi Enter…"
+                      className="h-8 w-52 text-[12px]"
+                      disabled={taiTuLink.isPending}
+                    />
+                    <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5"
+                      onClick={themTuLink} disabled={!linkAnh.trim() || taiTuLink.isPending}>
+                      {taiTuLink.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <LinkIcon className="h-4 w-4" />}
+                      Lấy từ link
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5"
+                      onClick={() => fileRef.current?.click()} disabled={upload.isPending}>
+                      {upload.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+                      Tải ảnh lên
+                    </Button>
+                  </div>
                 </div>
                 {images.length === 0 ? (
                   <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">

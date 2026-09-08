@@ -156,6 +156,20 @@ export function useUploadDocFile() {
   })
 }
 
+/**
+ * Tải tệp về hệ thống từ MỘT ĐƯỜNG DẪN.
+ *
+ * Tải về chứ không lưu nguyên link: link ngoài chết lúc nào không biết, và Zalo
+ * phải tải được tệp thì mới hiện ảnh cho khách. Lưu link là hôm nay chạy, vài
+ * tháng sau ảnh biến mất khỏi mọi hội thoại đã gửi.
+ */
+export function useUploadDocFromUrl() {
+  return useMutation({
+    mutationFn: async (url: string) =>
+      (await api.post<UploadResult>('/doc-library/upload-from-url', { url })).data,
+  })
+}
+
 /** Đường dẫn tương đối từ backend → URL tuyệt đối để trình duyệt mở được. */
 export function assetUrl(u?: string | null): string | undefined {
   if (!u) return undefined
