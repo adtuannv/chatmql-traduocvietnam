@@ -15,7 +15,6 @@
  * M3 TODO: RAG retrieval between passes (ragQuery → KB top-k).
  */
 import { randomUUID } from 'node:crypto'
-import { prisma } from '../../../shared/prisma-client.js'
 import { logger } from '../../../shared/logger.js'
 import { getProviderConfig } from '../provider-registry.js'
 import { generateWithOpenai, generateWithOpenaiMessages, type OpenaiMessage } from '../providers/openai.js'
@@ -31,7 +30,9 @@ import { buildRouterPrompt, parseRouterDecision } from '../prompts/ai-router.js'
 import { buildGeneratorPrompt, buildAgentSystemPrompt } from '../prompts/auto-reply.js'
 import { buildCriticPrompt, parseCriticVerdict } from '../prompts/critic.js'
 import { getToolsConfig, buildToolScopeNote, type ToolsConfig } from '../tools-config-service.js'
-import { buildOpenaiTools, executeTool, resolveProductImage, HANDOFF_TOOL, APPOINTMENT_TOOL, ORDER_TOOL, LOG_GAP_TOOL, SEND_IMAGE_TOOL, type ResolvedProductImage } from './tools-runtime.js'
+import { buildOpenaiTools, executeTool, resolveProductImage, formatOrders, HANDOFF_TOOL, APPOINTMENT_TOOL, ORDER_TOOL, LOOKUP_ORDER_TOOL, LOG_GAP_TOOL, SEND_IMAGE_TOOL, type ResolvedProductImage } from './tools-runtime.js'
+import { prisma } from '../../../shared/prisma-client.js'
+import { fetchCustomerOrders } from '../../orders/crm-order-client.js'
 import { recordPendingAction } from '../pending-action-service.js'
 import { recordKnowledgeGap } from '../knowledge-gap-service.js'
 import { isConfidentHit, shouldAutoLogGap } from './gap-detection.js'
@@ -188,6 +189,28 @@ async function runAgentLoop(args: {
           result = `ĐÃ LÊN ĐƠN HÀNG NHÁP THÀNH CÔNG trên hệ thống (${rec.summary}). Trạng thái: CHỜ DUYỆT & ĐÓNG GÓI. Hãy xuất bảng HÓA ĐƠN NHÁP chi tiết cho khách kiểm tra lại thông tin (Tên, SĐT, Địa chỉ, Sản phẩm, Tổng tiền), báo khách xác nhận OK và yên tâm nhân viên/shop sẽ liên hệ đóng gói gửi hàng sớm.`
         } catch (err) {
           result = `Không lưu được đơn hàng: ${(err as Error).message}`
+        }
+      } else if (tc.name === LOOKUP_ORDER_TOOL) {
+        // Số điện thoại lấy từ hồ sơ gắn với hội thoại, KHÔNG lấy từ tham số mô
+        // hình truyền vào — xem chú thích ở LOOKUP_ORDER_DEF. Khách chỉ tra
+        // được đơn của chính mình.
+        try {
+          const conv = await prisma.conversation.findFirst({
+            where: { id: args.convId },
+            select: { contact: { select: { phone: true } } },
+          })
+          const sdt = conv?.contact?.phone?.trim()
+          if (!sdt) {
+            result = 'Hồ sơ khách này chưa có số điện thoại nên chưa tra được đơn. Hãy hỏi khách số điện thoại đặt hàng rồi tra lại.'
+          } else {
+            const { orders } = await fetchCustomerOrders(sdt)
+            const maDon = typeof (parsedArgs as { order_code?: unknown })?.order_code === 'string'
+              ? (parsedArgs as { order_code: string }).order_code.trim()
+              : undefined
+            result = formatOrders(orders ?? [], maDon || undefined)
+          }
+        } catch (err) {
+          result = `Không tra được đơn lúc này: ${(err as Error).message}. Hãy nói với khách là em kiểm tra lại rồi báo, đừng đoán trạng thái đơn.`
         }
       } else if (tc.name === APPOINTMENT_TOOL) {
         // Action: record a pending appointment (staff confirms before it books).

@@ -161,6 +161,59 @@ const ORDER_DEF: OpenaiToolDef = {
   },
 }
 
+/**
+ * Tra cứu đơn hàng của CHÍNH khách đang chat.
+ *
+ * KHÔNG nhận số điện thoại từ mô hình — cố ý. Nếu để mô hình truyền số thì chỉ
+ * cần khách gõ "tra đơn của số 09xx" là xem được lịch sử mua hàng, địa chỉ và
+ * hạng thẻ của người khác. Số điện thoại luôn lấy từ hồ sơ gắn với hội thoại,
+ * tức là danh tính do hệ thống xác định chứ không do khách khai.
+ */
+export const LOOKUP_ORDER_TOOL = 'lookup_order'
+const LOOKUP_ORDER_DEF: OpenaiToolDef = {
+  type: 'function',
+  function: {
+    name: LOOKUP_ORDER_TOOL,
+    description: 'Tra ĐƠN HÀNG của khách đang chat: trạng thái giao, đơn vị vận chuyển, sản phẩm, tổng tiền. Dùng khi khách hỏi "đơn của tôi đâu rồi", "bao giờ nhận được", "kiểm tra đơn". Hệ thống tự lấy đúng khách theo hồ sơ hội thoại — KHÔNG cần và KHÔNG được truyền số điện thoại.',
+    parameters: {
+      type: 'object',
+      properties: {
+        order_code: { type: 'string', description: 'Mã đơn khách nêu (vd "HD_0G6385M9"). Bỏ trống để xem các đơn gần nhất.' },
+      },
+      required: [],
+    },
+  },
+}
+
+/** Đơn hàng thành chữ cho mô hình đọc. Giữ nguyên tên trạng thái của CRM. */
+export function formatOrders(
+  orders: Array<Record<string, unknown>>,
+  maDon?: string,
+): string {
+  const loc = maDon
+    ? orders.filter((o) => String(o.order_code ?? '').toLowerCase().includes(maDon.toLowerCase()))
+    : orders
+  if (!loc.length) {
+    return maDon
+      ? `Không thấy đơn nào có mã "${maDon}" trên hồ sơ của khách này.`
+      : 'Khách này chưa có đơn hàng nào trên hệ thống.'
+  }
+  const vnd = (n: unknown) => (typeof n === 'number' ? `${new Intl.NumberFormat('vi-VN').format(n)}đ` : '?')
+  return loc.slice(0, 5).map((o) => {
+    const items = Array.isArray(o.items)
+      ? (o.items as Array<Record<string, unknown>>)
+          .map((i) => `${i.name} x${i.quantity}`).join(', ')
+      : ''
+    const ngay = o.created_at ? String(o.created_at).slice(0, 10) : '?'
+    return [
+      `- Đơn ${o.order_code} (${ngay}) — TRẠNG THÁI: ${o.status ?? 'chưa rõ'}`,
+      o.carrier ? `  Vận chuyển: ${o.carrier}` : '',
+      items ? `  Hàng: ${items}` : '',
+      `  Tổng: ${vnd(o.total_amount)}${o.shipping_fee ? ` (gồm ship ${vnd(o.shipping_fee)})` : ''}`,
+    ].filter(Boolean).join('\n')
+  }).join('\n')
+}
+
 export function buildOpenaiTools(tools: ToolsConfig): OpenaiToolDef[] {
   const search = TOOL_NAMES.filter((n) => tools[n].enabled).map((n) => ({
     type: 'function' as const,
@@ -177,7 +230,7 @@ export function buildOpenaiTools(tools: ToolsConfig): OpenaiToolDef[] {
     ...search,
     ...(anySearch ? [CATALOG_OVERVIEW_DEF, LOG_GAP_DEF] : []),
     ...(canSendImage ? [SEND_IMAGE_DEF] : []),
-    HANDOFF_DEF, APPOINTMENT_DEF, ORDER_DEF,
+    HANDOFF_DEF, APPOINTMENT_DEF, ORDER_DEF, LOOKUP_ORDER_DEF,
   ]
 }
 
