@@ -265,6 +265,55 @@ export interface DocAssetSnippet {
  * Tài nguyên liên quan tới câu khách hỏi, dùng cho ngữ cảnh AI.
  * Bỏ hẳn `visibility = internal`: tài nguyên nội bộ không được lọt vào lời tư vấn.
  */
+/** Từ để hỏi — khớp vào chúng chỉ tạo nhiễu. */
+const TU_BO_QUA_TL = new Set([
+  'cho', 'gui', 'xem', 'cai', 'nao', 'khong', 'minh', 'anh', 'chi', 'em',
+  'toi', 'ban', 'tat', 'ca', 'cac', 'nhung', 'muon', 'can', 'hoi', 'lai',
+])
+
+function boDauTL(v: string): string {
+  return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase()
+}
+
+/**
+ * Nới từ khoá sang cách gọi khác của cùng một thứ.
+ *
+ * Khách gõ "bảng giá" còn tài liệu đặt tên "Biểu giá" — cùng nghĩa mà không
+ * khớp một ký tự nào, nên tìm ra rỗng rồi AI đi bịa sang chuyện khác.
+ */
+const DONG_NGHIA: Record<string, string[]> = {
+  bang: ['bieu'], bieu: ['bang'],
+  gia: ['gia'],
+  anh: ['hinh'], hinh: ['anh'],
+}
+
+function dongNghia(terms: string[]): string[] {
+  const ra = new Set(terms)
+  for (const t of terms) for (const d of DONG_NGHIA[boDauTL(t)] ?? []) ra.add(d)
+  return [...ra]
+}
+
+/** Chấm điểm: tiêu đề nặng hơn nội dung, giống cách xếp tài liệu sản phẩm. */
+function diemKhopTL(
+  r: { title: string; description: string | null; textContent: string | null; productCodes: string[] },
+  terms: string[],
+): number {
+  const ten = boDauTL(r.title)
+  const mo = boDauTL(`${r.description ?? ''} ${r.textContent ?? ''}`)
+  let d = 0
+  let moKhop = 0
+  for (const t0 of terms) {
+    const t = boDauTL(t0)
+    if (ten === t) d += 15
+    else if (ten.includes(t)) d += 8
+    if (r.productCodes.some((c) => boDauTL(c).includes(t))) d += 6
+    if (mo.includes(t)) moKhop++
+  }
+  d += Math.min(2, moKhop)
+  if (ten.includes(boDauTL(terms.join(' ')))) d += 10
+  return d
+}
+
 export async function retrieveDocAssets(
   orgId: string,
   query: string,
@@ -272,12 +321,22 @@ export async function retrieveDocAssets(
 ): Promise<DocAssetSnippet[]> {
   const q = query.trim()
   if (!q) return []
-  const terms = [...new Set(q.split(/[\s,.;:!?()[\]"']+/).filter((t) => t.length >= 3))].slice(0, 8)
-  const needles = terms.length ? terms : [q]
+  const terms = [...new Set(
+    q.split(/[\s,.;:!?()[\]"']+/).filter((t) => t.length >= 3 && !TU_BO_QUA_TL.has(boDauTL(t))),
+  )].slice(0, 8)
+  const needles = dongNghia(terms.length ? terms : [q])
 
+  // Bỏ loại `product`: chính những sản phẩm đó đã nằm ở khối "Tài liệu bán
+  // hàng" phía trên rồi. Để cả hai thì mô hình thấy cùng danh sách hai lần và
+  // đọc ra hai lần — đã xảy ra thật, khách nhận đúng một danh sách bánh trung
+  // thu lặp lại y hệt trong cùng một lượt.
+  //
+  // Tầng này để dành cho thứ KHÔNG gắn với một mã sản phẩm: biểu giá, ảnh theo
+  // chủ đề, tài liệu chính sách.
   const rows = await prisma.docAsset.findMany({
     where: {
       orgId,
+      kind: { not: 'product' },
       visibility: { not: 'internal' },
       OR: needles.flatMap((t) => [
         { title: { contains: t, mode: 'insensitive' as const } },
@@ -286,11 +345,19 @@ export async function retrieveDocAssets(
         { productCodes: { has: normCode(t) } },
       ]),
     },
-    orderBy: { updatedAt: 'desc' },
-    take: Math.min(20, Math.max(1, limit)),
+    take: 40,
   })
 
-  return rows.map((r) => ({
+  // Xếp theo độ khớp, không theo ngày sửa. Sắp theo ngày sửa thì hỏi "bảng
+  // giá" lại ra tài liệu vừa cập nhật gần nhất — đã xảy ra thật.
+  const xep = rows
+    .map((r) => ({ r, d: diemKhopTL(r, needles) }))
+    .filter((x) => x.d > 0)
+    .sort((a, b) => b.d - a.d)
+    .slice(0, Math.min(20, Math.max(1, limit)))
+    .map((x) => x.r)
+
+  return xep.map((r) => ({
     id: r.id,
     kind: r.kind,
     title: r.title,

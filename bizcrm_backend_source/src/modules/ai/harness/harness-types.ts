@@ -46,6 +46,8 @@ export interface ProductDocSnippet {
   description: string | null
   imageCount: number
   videoCount: number
+  /** Đường dẫn ảnh — công cụ gửi ảnh cần tệp thật, không chỉ cần số lượng. */
+  images: string[]
   /** Link Mini App gửi được cho khách. Rỗng = sản phẩm chưa ghép mã. */
   miniAppUrl: string | null
   /** Giá và đơn vị lấy THẲNG từ hệ thống nguồn tại thời điểm trả lời. */

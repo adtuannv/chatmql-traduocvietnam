@@ -12,6 +12,7 @@ import { retrieveKbSemantic } from '../../knowledge/embedding-service.js'
 import { aggregate } from '../../products/product-query-service.js'
 import { TOOL_NAMES, type ToolName, type ToolsConfig } from '../tools-config-service.js'
 import type { OpenaiToolDef } from '../providers/openai.js'
+import { retrieveProductDocs } from '../../product-docs/product-docs-service.js'
 import { prisma } from '../../../shared/prisma-client.js'
 import { isImageAvailable } from '../../chat/send-image-core.js'
 
@@ -326,57 +327,28 @@ export async function resolveProductImage(
   const q = (query || '').trim()
   if (!q) return { status: 'not_found' }
 
-  // 1. Tìm theo mã hoặc tên cụ thể
-  const rows = await prisma.product.findMany({
-    where: {
-      orgId,
-      status: 'active',
-      OR: [
-        { code: { equals: q, mode: 'insensitive' } },
-        { name: { equals: q, mode: 'insensitive' } },
-        { name: { contains: q, mode: 'insensitive' } },
-        { code: { contains: q, mode: 'insensitive' } },
-      ],
-    },
-    select: { id: true, name: true, images: true },
-    take: 5,
-  })
+  // Tìm trong TÀI LIỆU SẢN PHẨM, không tìm trong bảng `products` nội bộ.
+  //
+  // Bảng nội bộ là danh mục cũ 49 dòng, còn lẫn cả đồ thể dục thể thao. Cộng
+  // với một nhánh dự phòng "câu hỏi chung chung thì lấy đại sản phẩm nào có
+  // ảnh", kết quả là khách hỏi "có ảnh bảng giá không" lại nhận được ảnh máy
+  // massage. Đã xảy ra thật.
+  //
+  // Tài liệu sản phẩm bám theo danh mục đang bán và ảnh là tệp thật đã tải lên.
+  const docs = await retrieveProductDocs(orgId, q, 5)
 
-  // Duyệt qua các sản phẩm tìm được để lấy ảnh hợp lệ trên đĩa
-  for (const row of rows) {
-    const images = Array.isArray(row.images) ? (row.images as string[]) : []
-    for (const url of images) {
-      if (!url) continue
-      if (await isImageAvailable(url)) {
-        return { status: 'ok', image: { productId: row.id, productName: row.name, imageUrl: url } }
+  for (const d of docs) {
+    for (const url of d.images ?? []) {
+      if (url && await isImageAvailable(url)) {
+        return { status: 'ok', image: { productId: d.productCode, productName: d.name ?? d.productCode, imageUrl: url } }
       }
     }
   }
 
-  // 2. Nếu khách hỏi chung chung (sản phẩm, mẫu, trà, tham khảo...) hoặc sản phẩm cụ thể chưa có file ảnh
-  const isGeneric = /^(sản phẩm|các sản phẩm|trà|mẫu|ảnh|hình|tham khảo|bán chạy|nổi bật|quà)/i.test(q)
-  if (isGeneric || rows.length === 0) {
-    const sampleProducts = await prisma.product.findMany({
-      where: { orgId, status: 'active' },
-      select: { id: true, name: true, images: true },
-      take: 20,
-    })
-
-    for (const row of sampleProducts) {
-      const images = Array.isArray(row.images) ? (row.images as string[]) : []
-      for (const url of images) {
-        if (!url) continue
-        if (await isImageAvailable(url)) {
-          return { status: 'ok', image: { productId: row.id, productName: row.name, imageUrl: url } }
-        }
-      }
-    }
-  }
-
-  if (rows.length > 0) {
-    return { status: 'no_image', productName: rows[0].name }
-  }
-
+  // Không khớp sản phẩm nào thì BÁO KHÔNG TÌM THẤY, tuyệt đối không gửi đại một
+  // tấm. Gửi nhầm ảnh còn tệ hơn không gửi: khách tưởng shop bán thứ đó.
+  const dau = docs[0]
+  if (dau) return { status: 'no_image', productName: dau.name ?? dau.productCode }
   return { status: 'not_found' }
 }
 

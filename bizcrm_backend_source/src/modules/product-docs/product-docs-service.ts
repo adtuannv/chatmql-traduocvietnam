@@ -100,6 +100,8 @@ export interface ProductDocSnippet {
   description: string | null
   imageCount: number
   videoCount: number
+  /** Đường dẫn ảnh — công cụ gửi ảnh cần tệp thật, không chỉ cần số lượng. */
+  images: string[]
   /** Link Mini App gửi được cho khách. Rỗng = sản phẩm chưa ghép mã. */
   miniAppUrl: string | null
   /** Giá và đơn vị lấy THẲNG từ hệ thống nguồn tại thời điểm trả lời. */
@@ -251,6 +253,7 @@ export async function retrieveProductDocs(
     priceMax: gia.get(r.productCode.trim().toUpperCase())?.priceMax ?? null,
     unit: gia.get(r.productCode.trim().toUpperCase())?.unit ?? null,
     vatNote: gia.get(r.productCode.trim().toUpperCase())?.vatNote ?? null,
+    images: r.images,
     imageCount: r.images.length,
     videoCount: r.videoUrls.length,
   }))
