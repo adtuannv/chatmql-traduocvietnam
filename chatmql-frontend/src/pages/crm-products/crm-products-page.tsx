@@ -13,8 +13,9 @@
  */
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { assetUrl } from '@/hooks/use-doc-library'
 import { ChevronRight,
-  FileText, Grid2x2, List as ListIcon, Loader2, PackageSearch, RefreshCw, Search, ServerCog,
+  FileText, Grid2x2, ImageOff, List as ListIcon, Loader2, PackageSearch, RefreshCw, Search, ServerCog,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { ErrorState, Loading } from '@/components/shared/feedback'
@@ -185,6 +186,7 @@ export function CrmProductsPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
+                <th className="w-12 px-3 py-2 text-left font-medium">Ảnh</th>
                 <th className="px-3 py-2 text-left font-medium">Mã</th>
                 <th className="px-3 py-2 text-left font-medium">Tên sản phẩm</th>
                 <th className="px-3 py-2 text-left font-medium">Danh mục</th>
@@ -208,7 +210,7 @@ export function CrmProductsPage() {
                       onToggle={() => setDongMo(dongMo === khoa ? null : khoa)}
                     />
                     {dongMo === khoa && (
-                      <ProductRowDetail p={p} mauLink={mauLink} soCot={9} />
+                      <ProductRowDetail p={p} mauLink={mauLink} soCot={10} />
                     )}
                   </Fragment>
                 )
@@ -280,6 +282,22 @@ function Row({
         p.status === 'inactive' && 'opacity-60',
       )}
     >
+      <td className="px-3 py-1.5">
+        {/* Nhìn ảnh nhận ra hàng nhanh hơn đọc tên: nhiều dòng chỉ khác nhau ở
+            quy cách ("Túi Kraft 100g" và "500g"), mà bao bì thì khác hẳn. */}
+        {p.imageUrl ? (
+          <img
+            src={assetUrl(p.imageUrl)}
+            alt=""
+            loading="lazy"
+            className="h-9 w-9 rounded border object-cover"
+          />
+        ) : (
+          <span className="flex h-9 w-9 items-center justify-center rounded border bg-muted text-muted-foreground">
+            <ImageOff className="h-3.5 w-3.5" />
+          </span>
+        )}
+      </td>
       <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
         <span className="inline-flex items-center gap-1.5">
           <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',

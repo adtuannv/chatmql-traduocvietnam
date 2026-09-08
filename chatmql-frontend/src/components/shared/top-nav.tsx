@@ -2,12 +2,13 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { FEATURES } from '@/lib/features'
 import { useMyPermissions } from '@/hooks/use-settings'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { BookOpen, PanelLeft, MoreHorizontal } from 'lucide-react'
+import { BookOpen, PanelLeft, MoreHorizontal, Pin } from 'lucide-react'
 import { filterNavByPermissions, navForRole, type NavItem } from './nav-config'
 import { BrandLogo } from './brand-logo'
 import { UserMenu } from './user-menu'
 import { NotificationsBell } from './notifications-bell'
 import { UserGuideDialog } from './user-guide-dialog'
+import { PinNavDialog } from './pin-nav-dialog'
 import { useUiStore } from '@/stores/ui-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
@@ -18,6 +19,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 
 const ITEM_CLS =
@@ -32,6 +34,8 @@ const MORE_W = 120 // chỗ dành cho nút "Xem thêm"
 export function TopNav() {
   const setNavMode = useUiStore((s) => s.setNavMode)
   const [guideOpen, setGuideOpen] = useState(false)
+  const [pinOpen, setPinOpen] = useState(false)
+  const pinnedNav = useUiStore((s) => s.pinnedNav)
   const role = useAuthStore((s) => s.user?.role)
   // RBAC động: menu lọc thêm theo /me/permissions (đang tải thì giữ nguyên
   // theo vai trò gốc để không nhấp nháy).
@@ -40,6 +44,10 @@ export function TopNav() {
     navForRole(role),
     FEATURES.ROLES_PERMISSIONS ? permsQ.data : undefined,
   )
+  // Người dùng đã chọn ghim thì chỉ những module đó được tranh chỗ trên thanh
+  // menu; phần còn lại luôn nằm trong "Xem thêm". Vẫn phải cắt theo bề rộng:
+  // ghim mười module mà màn hình chỉ vừa năm thì không thể nhét hết.
+  const ungVien = pinnedNav ? nav.filter((n) => pinnedNav.includes(n.to)) : nav
   const containerRef = useRef<HTMLDivElement>(null)
   const measurerRef = useRef<HTMLDivElement>(null)
   const [visibleCount, setVisibleCount] = useState(nav.length)
@@ -71,10 +79,10 @@ export function TopNav() {
     const ro = new ResizeObserver(compute)
     ro.observe(container)
     return () => ro.disconnect()
-  }, [nav.length])
+  }, [ungVien.length])
 
-  const visible = nav.slice(0, visibleCount)
-  const overflow = nav.slice(visibleCount)
+  const visible = ungVien.slice(0, visibleCount)
+  const overflow = nav.filter((n) => !visible.some((v) => v.to === n.to))
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-sidebar-border bg-sidebar px-4 text-sidebar-foreground">
@@ -87,7 +95,7 @@ export function TopNav() {
           rộng tự nhiên để đo, nhưng hộp đo KHÔNG nới scrollWidth của trang —
           trước đây nó rộng ~1400px làm cả trang kéo lệch ngang được. */}
       <div ref={measurerRef} aria-hidden className="pointer-events-none invisible absolute left-0 top-0 -z-10 flex max-w-full gap-1 overflow-hidden">
-        {nav.map((item) => (
+        {ungVien.map((item) => (
           <ItemContent key={item.to} item={item} className={cn(ITEM_CLS, INACTIVE)} />
         ))}
       </div>
@@ -108,7 +116,7 @@ export function TopNav() {
             </NavLink>
           )
         })}
-        {overflow.length > 0 && <MoreMenu items={overflow} />}
+        <MoreMenu items={overflow} onPin={() => setPinOpen(true)} />
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
@@ -143,6 +151,7 @@ export function TopNav() {
       </div>
 
       <UserGuideDialog open={guideOpen} onOpenChange={setGuideOpen} />
+      <PinNavDialog open={pinOpen} onOpenChange={setPinOpen} nav={nav} />
     </header>
   )
 }
@@ -157,7 +166,7 @@ function ItemContent({ item, className }: { item: NavItem; className?: string })
   )
 }
 
-function MoreMenu({ items }: { items: NavItem[] }) {
+function MoreMenu({ items, onPin }: { items: NavItem[]; onPin: () => void }) {
   const navigate = useNavigate()
   const location = useLocation()
   const hasActive = items.some((i) => location.pathname.startsWith(i.to))
@@ -169,7 +178,7 @@ function MoreMenu({ items }: { items: NavItem[] }) {
           <span className="whitespace-nowrap">Xem thêm</span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
+      <DropdownMenuContent align="end" className="w-56">
         {items.map((item) => {
           const Icon = item.icon
           return (
@@ -179,6 +188,13 @@ function MoreMenu({ items }: { items: NavItem[] }) {
             </DropdownMenuItem>
           )
         })}
+        {/* Chỗ vào cấu hình đặt ngay đây: người dùng đi tìm module bị ẩn thì mở
+            đúng menu này, không phải lặn vào trang Cài đặt. */}
+        {items.length > 0 && <DropdownMenuSeparator />}
+        <DropdownMenuItem onClick={onPin}>
+          <Pin className="mr-2 h-4 w-4" />
+          Ghim module lên thanh menu…
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
