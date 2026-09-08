@@ -13,9 +13,10 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { ImageLibraryPicker } from './image-library-picker'
 import {
   FileText, Film, Image as ImageIcon, Link2, Loader2, Package, Type, Upload, X,
-  Link as LinkIcon,
+  FolderOpen, Link as LinkIcon,
 } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -67,6 +68,7 @@ export function DocAssetDialog({ asset, folders, defaultFolderId, open, onOpenCh
   const upload = useUploadDocFile()
   const taiTuLink = useUploadDocFromUrl()
   const [linkAnh, setLinkAnh] = useState('')
+  const [moThuVien, setMoThuVien] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   /**
@@ -284,6 +286,18 @@ export function DocAssetDialog({ asset, folders, defaultFolderId, open, onOpenCh
             onChange={(e) => { onPickFiles(e.target.files); e.target.value = '' }}
           />
 
+          <ImageLibraryPicker
+            open={moThuVien}
+            onOpenChange={setMoThuVien}
+            daCo={images}
+            onPick={(urls) => {
+              // Bỏ trùng lần nữa: người dùng có thể mở popup hai lần và chọn
+              // lại đúng tấm vừa thêm.
+              setImages((prev) => [...prev, ...urls.filter((u) => !prev.includes(u))])
+              toast.success(`Đã thêm ${urls.length} ảnh từ thư viện`)
+            }}
+          />
+
           {/* Sản phẩm: bộ ảnh + nhiều video */}
           {isProduct && (
             <>
@@ -305,6 +319,11 @@ export function DocAssetDialog({ asset, folders, defaultFolderId, open, onOpenCh
                       onClick={themTuLink} disabled={!linkAnh.trim() || taiTuLink.isPending}>
                       {taiTuLink.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <LinkIcon className="h-4 w-4" />}
                       Lấy từ link
+                    </Button>
+                    {/* Chọn lại ảnh đã có thay vì tải lên bản trùng. */}
+                    <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5"
+                      onClick={() => setMoThuVien(true)}>
+                      <FolderOpen className="h-4 w-4" /> Từ thư viện
                     </Button>
                     <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5"
                       onClick={() => fileRef.current?.click()} disabled={upload.isPending}>

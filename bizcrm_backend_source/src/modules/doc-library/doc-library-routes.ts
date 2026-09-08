@@ -250,6 +250,41 @@ export async function docLibraryRoutes(app: FastifyInstance): Promise<void> {
   })
 
   /**
+   * Mọi ảnh đang có trong thư viện, gộp lại thành một danh sách để chọn.
+   *
+   * Cùng một tấm ảnh thường dùng cho nhiều sản phẩm (ảnh chụp bàn trà, ảnh bao
+   * bì chung). Không có chỗ chọn lại thì mỗi lần phải tải lên một bản mới —
+   * vừa tốn đĩa vừa khiến sửa ảnh phải sửa ở chục chỗ.
+   *
+   * Gộp cả `images[]` của tài liệu sản phẩm lẫn `fileUrl` của tài nguyên loại
+   * ảnh, rồi bỏ trùng theo đường dẫn.
+   */
+  app.get<{ Querystring: { q?: string } }>('/api/v1/doc-library/images', async (request, reply) => {
+    const u = guard(request, reply); if (!u) return
+    const tim = (request.query.q || '').trim().toLowerCase()
+
+    const rows = await prisma.docAsset.findMany({
+      where: { orgId: u.orgId, OR: [{ images: { isEmpty: false } }, { kind: 'image' }] },
+      select: { id: true, title: true, kind: true, images: true, fileUrl: true, updatedAt: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 400,
+    })
+
+    const thay = new Map<string, { url: string; title: string; kind: string }>()
+    for (const r of rows) {
+      const ds = [...r.images, ...(r.kind === 'image' && r.fileUrl ? [r.fileUrl] : [])]
+      for (const url of ds) {
+        if (!url || thay.has(url)) continue
+        thay.set(url, { url, title: r.title, kind: r.kind })
+      }
+    }
+
+    const tatCa = [...thay.values()]
+    const loc = tim ? tatCa.filter((x) => x.title.toLowerCase().includes(tim)) : tatCa
+    return { images: loc.slice(0, 200), total: tatCa.length }
+  })
+
+  /**
    * Tải tệp về từ MỘT ĐƯỜNG DẪN thay vì chọn tệp trên máy.
    *
    * Vì sao phải tải về chứ không lưu nguyên link: link ngoài chết lúc nào không
