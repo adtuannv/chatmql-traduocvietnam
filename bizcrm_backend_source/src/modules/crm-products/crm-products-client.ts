@@ -568,22 +568,44 @@ export async function searchCrmProducts(
  */
 async function buMaMiniApp(orgId: string, rows: CrmProduct[]): Promise<CrmProduct[]> {
   const ma = [...new Set(rows.map((p) => p.code?.trim().toUpperCase()).filter((c): c is string => !!c))]
-  if (!ma.length) return rows
+  if (!ma.length) return rows.map(donAnh)
   try {
     const docs = await prisma.productDoc.findMany({
-      where: { orgId, productCode: { in: ma }, miniAppId: { not: null } },
-      select: { productCode: true, miniAppId: true },
+      where: { orgId, productCode: { in: ma } },
+      select: { productCode: true, miniAppId: true, images: true },
     })
-    if (!docs.length) return rows
-    const bang = new Map(docs.map((d) => [d.productCode.toUpperCase(), d.miniAppId]))
+    const bang = new Map(docs.map((d) => [d.productCode.toUpperCase(), d]))
     return rows.map((p) => {
-      const m = p.code ? bang.get(p.code.trim().toUpperCase()) : undefined
-      return m ? { ...p, miniAppId: m } : p
+      const d = p.code ? bang.get(p.code.trim().toUpperCase()) : undefined
+      const goc = donAnh(p)
+      if (!d) return goc
+      return {
+        ...goc,
+        miniAppId: d.miniAppId ?? goc.miniAppId,
+        // Ảnh trong tài liệu bán hàng là tệp thật đã lưu trên máy chủ, còn ảnh
+        // của hệ thống nguồn có thể không có hoặc là chuỗi nhúng cả trăm KB.
+        // Ưu tiên tệp: nhẹ hơn, và đúng tấm ảnh mà nút Gửi sẽ gửi đi.
+        imageUrl: d.images[0] ?? goc.imageUrl,
+      }
     })
   } catch {
     // Không đọc được ánh xạ thì danh sách vẫn phải hiện, chỉ là nút gửi bị khoá.
-    return rows
+    return rows.map(donAnh)
   }
+}
+
+/**
+ * Bỏ ảnh nhúng base64 khỏi thứ gửi ra trình duyệt.
+ *
+ * Hệ thống nguồn trả ảnh dạng `data:image/jpeg;base64,...` dài hơn 140 KB mỗi
+ * tấm. Một trang 60 sản phẩm là gần 18 MB JSON — trình duyệt tải ì ạch mà cũng
+ * chẳng đẹp hơn tệp ảnh thường. Đã có tệp trong tài liệu bán hàng thì dùng tệp;
+ * chưa có thì thà để trống, giao diện vẽ ô trống là hiểu ngay.
+ */
+function donAnh(p: CrmProduct): CrmProduct {
+  if (!p.imageUrl?.startsWith('data:')) return p
+  const { image_url: _bo, images: _bo2, ...rawGon } = p.raw
+  return { ...p, imageUrl: null, raw: rawGon }
 }
 
 /** Nguồn nội bộ mà thiếu tổ chức là lỗi lập trình, không phải lỗi cấu hình. */
