@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { apiError } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { assetUrl, useUploadDocFile } from '@/hooks/use-doc-library'
+import { doiCho, useKeoSapXep } from '@/lib/keo-sap-xep'
 
 /** Đủ cho một sản phẩm; nhiều hơn là gửi khách dội chuông chứ không thuyết phục hơn. */
 const TOI_DA = 12
@@ -58,13 +59,8 @@ export function ImageManager({
 
   const xoa = (i: number) => onChange(images.filter((_, k) => k !== i))
 
-  const doiCho = (i: number, huong: -1 | 1) => {
-    const j = i + huong
-    if (j < 0 || j >= images.length) return
-    const v = [...images]
-    ;[v[i], v[j]] = [v[j], v[i]]
-    onChange(v)
-  }
+  const dich = (i: number, huong: -1 | 1) => onChange(doiCho(images, i, i + huong))
+  const keo = useKeoSapXep((tu, den) => onChange(doiCho(images, tu, den)))
 
   if (doc) {
     if (!images.length) return <span className="text-[13px] text-muted-foreground">—</span>
@@ -88,8 +84,17 @@ export function ImageManager({
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {images.map((u, i) => (
-          <div key={`${u}-${i}`} className="group relative">
-            <img src={assetUrl(u)} alt="" loading="lazy"
+          <div
+            key={`${u}-${i}`}
+            {...keo.props(i)}
+            title="Kéo để đổi thứ tự"
+            className={cn(
+              'group relative cursor-grab transition-opacity active:cursor-grabbing',
+              keo.dangKeo === i && 'opacity-35',
+              keo.dangTren === i && keo.dangKeo !== i && 'ring-2 ring-primary rounded-md',
+            )}
+          >
+            <img src={assetUrl(u)} alt="" loading="lazy" draggable={false}
                  className={cn('h-20 w-20 rounded-md border object-cover',
                                i === 0 && 'ring-2 ring-amber-400')} />
             {i === 0 && (
@@ -104,11 +109,11 @@ export function ImageManager({
               <X className="h-3 w-3" />
             </button>
             <div className="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 rounded-b-md bg-black/45 py-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-              <button type="button" onClick={() => doiCho(i, -1)} disabled={i === 0}
+              <button type="button" onClick={() => dich(i, -1)} disabled={i === 0}
                       title="Chuyển lên trước" className="text-white disabled:opacity-30">
                 <ArrowLeft className="h-3 w-3" />
               </button>
-              <button type="button" onClick={() => doiCho(i, 1)} disabled={i === images.length - 1}
+              <button type="button" onClick={() => dich(i, 1)} disabled={i === images.length - 1}
                       title="Chuyển ra sau" className="text-white disabled:opacity-30">
                 <ArrowRight className="h-3 w-3" />
               </button>
@@ -133,7 +138,7 @@ export function ImageManager({
 
       <div className="flex items-center gap-2">
         <span className="text-[10.5px] text-muted-foreground">
-          {images.length}/{TOI_DA} ảnh · tấm đầu là ảnh đại diện
+          {images.length}/{TOI_DA} ảnh · kéo để đổi thứ tự, tấm đầu là ảnh đại diện
         </span>
         <button type="button" onClick={() => setDanLink((v) => !v)}
                 className="ml-auto flex items-center gap-1 text-[10.5px] text-primary hover:underline">

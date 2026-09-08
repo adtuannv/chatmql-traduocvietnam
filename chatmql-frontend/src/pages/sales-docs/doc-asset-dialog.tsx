@@ -14,9 +14,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ImageLibraryPicker } from './image-library-picker'
+import { doiCho, useKeoSapXep } from '@/lib/keo-sap-xep'
 import {
   FileText, Film, Image as ImageIcon, Link2, Loader2, Package, Type, Upload, X,
-  FolderOpen, Link as LinkIcon,
+  ChevronLeft, ChevronRight, FolderOpen, Link as LinkIcon,
 } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -69,6 +70,10 @@ export function DocAssetDialog({ asset, folders, defaultFolderId, open, onOpenCh
   const taiTuLink = useUploadDocFromUrl()
   const [linkAnh, setLinkAnh] = useState('')
   const [moThuVien, setMoThuVien] = useState(false)
+
+  // Thứ tự ảnh có ý nghĩa: tấm đầu là ảnh đại diện, và đó là tấm khách nhìn
+  // thấy trước tiên khi sale gửi sản phẩm.
+  const keo = useKeoSapXep((tu, den) => setImages((prev) => doiCho(prev, tu, den)))
   const fileRef = useRef<HTMLInputElement>(null)
 
   /**
@@ -339,17 +344,45 @@ export function DocAssetDialog({ asset, folders, defaultFolderId, open, onOpenCh
                 ) : (
                   <div className="grid grid-cols-5 gap-2">
                     {images.map((u, i) => (
-                      <div key={`${u}-${i}`} className="group relative aspect-square overflow-hidden rounded-md border bg-muted">
-                        <img src={assetUrl(u)} alt="" className="h-full w-full object-cover" />
+                      <div
+                        key={`${u}-${i}`}
+                        {...keo.props(i)}
+                        title="Kéo để đổi thứ tự"
+                        className={cn(
+                          'group relative aspect-square cursor-grab overflow-hidden rounded-md border bg-muted transition-opacity active:cursor-grabbing',
+                          keo.dangKeo === i && 'opacity-35',
+                          keo.dangTren === i && keo.dangKeo !== i && 'ring-2 ring-primary',
+                        )}
+                      >
+                        <img src={assetUrl(u)} alt="" draggable={false} className="h-full w-full object-cover" />
                         {i === 0 && <span className="absolute bottom-0.5 left-0.5 rounded bg-primary px-1 text-[9px] text-primary-foreground">Đại diện</span>}
                         <button type="button" aria-label="Gỡ ảnh"
                           onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
                           className="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-background/90 text-destructive group-hover:flex">
                           <X className="h-3 w-3" />
                         </button>
+                        {/* Nút mũi tên là đường dự phòng: kéo-thả của trình duyệt
+                            không chạy trên màn cảm ứng. */}
+                        <div className="absolute inset-x-0 bottom-0 hidden justify-center gap-0.5 bg-black/50 py-0.5 group-hover:flex">
+                          <button type="button" aria-label="Chuyển lên trước" disabled={i === 0}
+                            onClick={() => setImages((prev) => doiCho(prev, i, i - 1))}
+                            className="text-white disabled:opacity-30">
+                            <ChevronLeft className="h-3.5 w-3.5" />
+                          </button>
+                          <button type="button" aria-label="Chuyển ra sau" disabled={i === images.length - 1}
+                            onClick={() => setImages((prev) => doiCho(prev, i, i + 1))}
+                            className="text-white disabled:opacity-30">
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
+                )}
+                {images.length > 1 && (
+                  <p className="text-[10.5px] text-muted-foreground">
+                    Kéo ảnh để đổi thứ tự — tấm đầu là ảnh đại diện, cũng là tấm khách nhìn thấy trước tiên.
+                  </p>
                 )}
               </div>
 
