@@ -95,6 +95,17 @@ export function buildGeneratorPrompt(ctx: HarnessContext, decision: RouterDecisi
     parts.push(`\n## Tri thức (KB — nguồn sự thật, ưu tiên dùng để trả lời chính xác)\n${kb}`)
   }
 
+  // L1e — bản đồ danh mục. Đặt TRƯỚC các khối chi tiết vì nó trả lời câu hỏi
+  // "bên mình có những gì" — loại câu mà tìm theo từ khoá không xử lý được, và
+  // là chỗ AI từng bịa số liệu rồi khẳng định công ty không bán trà móc câu.
+  if (ctx.banDoDanhMuc) {
+    parts.push(
+      `\n## Toàn bộ danh mục đang bán (bản đồ tổng — dùng để trả lời "có những loại nào")\n${ctx.banDoDanhMuc}\n` +
+      `Danh sách này là ĐẦY ĐỦ. Khách hỏi một dòng hàng có trong đây thì shop CÓ BÁN — không được nói "chưa có" hay "không kinh doanh". ` +
+      `Chưa thấy giá hoặc chi tiết thì nói sẽ kiểm tra rồi báo lại, tuyệt đối không phủ nhận.`,
+    )
+  }
+
   // Products (L1b RAG) — accurate catalog/pricing grounding for sales replies.
   if (ctx.products && ctx.products.length > 0) {
     const list = ctx.products

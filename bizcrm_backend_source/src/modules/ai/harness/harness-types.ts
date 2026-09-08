@@ -118,6 +118,8 @@ export interface HarnessContext {
   /** L1c — tài liệu bán hàng theo mã sản phẩm. */
   productDocs: ProductDocSnippet[]
   docAssets: DocAssetSnippet[]
+  /** Bản đồ danh mục: nhóm nào có gì, khoảng giá. Chặn bịa và chối nhầm hàng. */
+  banDoDanhMuc?: string
   /** L2 — contact fact sheet (null if no contact yet). */
   contact: ContactProfile | null
   /** L3 — thread/contact memory facts (active facts for this contact). */

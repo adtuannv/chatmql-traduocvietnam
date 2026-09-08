@@ -17,7 +17,7 @@ import { getAlwaysScenarios, retrieveRelevantScenarios } from '../scenario-servi
 import { retrieveKb } from '../../knowledge/kb-service.js'
 import { retrieveKbSemantic } from '../../knowledge/embedding-service.js'
 import { retrieveProductSemantic } from '../../products/product-embedding.js'
-import { retrieveProductDocs } from '../../product-docs/product-docs-service.js'
+import { retrieveProductDocs, banDoDanhMuc } from '../../product-docs/product-docs-service.js'
 import { retrieveDocAssets } from '../../doc-library/doc-library-service.js'
 import { getThreadMemory } from '../../knowledge/memory-service.js'
 import { getToolsConfig, type ToolsConfig, type ToolConfig } from '../tools-config-service.js'
@@ -268,7 +268,7 @@ export async function assembleContext(
   // In agent mode (skipRag) the generator fetches KB/products via tool calls,
   // so we don't pre-fetch them here (avoids double retrieval).
   // Parallelize all layer loads (each KB/product tool gated by its own config)
-  const [logic, scenarios, contact, threadMemory, staffNotes, kbSnippets, products, productDocs, docAssets, recentMessages] = await Promise.all([
+  const [logic, scenarios, contact, threadMemory, staffNotes, kbSnippets, products, productDocs, docAssets, banDo, recentMessages] = await Promise.all([
     getActiveLogicContext(orgId),                                                          // L0
     loadScenarios(orgId, turnText, ragTopK, budgets.l0bScenarios, opts.minScore),          // L0b
     contactId ? loadContactProfile(contactId) : Promise.resolve(null),                    // L2
@@ -280,6 +280,7 @@ export async function assembleContext(
     // ChatMQL tự soạn, không nằm trong công cụ tra cứu nào của mô hình.
     retrieveProductDocs(orgId, turnText, 5).catch(() => [] as ProductDocSnippet[]),          // L1c
     retrieveDocAssets(orgId, turnText, 5).catch(() => [] as DocAssetSnippet[]),               // L1d
+    banDoDanhMuc(orgId).catch(() => ''),                                                     // L1e
     loadRecentMessages(convId, budgets.l5Messages, opts.historyBefore),                     // L5
   ])
 
@@ -309,6 +310,7 @@ export async function assembleContext(
     products,
     productDocs,
     docAssets,
+    banDoDanhMuc: banDo,
     contact,
     threadMemory,
     staffNotes,

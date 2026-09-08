@@ -129,30 +129,64 @@ function bo_dau(v: string): string {
 }
 
 /**
- * Chấm điểm độ khớp. Tên sản phẩm nặng hơn mô tả rất nhiều: khách gõ tên hàng
- * chứ không gõ đoạn mô tả, nên một từ trúng tên đáng giá hơn ba từ trúng mô tả.
+ * Chấm điểm độ khớp, có tính ĐỘ HIẾM của từ.
+ *
+ * Bản trước cộng đều mọi từ, nên hỏi "trà móc câu" thì từ "trà" — khớp 71% tên
+ * sản phẩm — cộng điểm cho gần hết danh mục, dìm chết từ "móc câu" chỉ khớp 2
+ * sản phẩm. Kết quả là khách hỏi trà móc câu lại được tư vấn hộp quà.
+ *
+ * Nay từ càng khớp nhiều sản phẩm thì càng ít giá trị phân biệt, đúng như trực
+ * giác: "trà" không nói lên gì, "móc câu" mới là thứ khách muốn.
  */
 export function diemKhop(
   row: { name: string | null; keywords: string | null; productCode: string; description: string | null },
   terms: string[],
+  trongSo: Map<string, number>,
 ): number {
   const ten = bo_dau(row.name ?? '')
   const khoa = bo_dau(row.keywords ?? '')
   const ma = bo_dau(row.productCode)
   const mo = bo_dau(row.description ?? '')
   let d = 0
+  let moKhop = 0
+
   for (const t0 of terms) {
     const t = bo_dau(t0)
-    if (ma === t) d += 20
-    else if (ma.includes(t)) d += 6
-    if (ten === t) d += 15
-    else if (ten.includes(t)) d += 8
-    if (khoa.includes(t)) d += 5
-    if (mo.includes(t)) d += 1
+    const w = trongSo.get(t) ?? 1
+    if (ma === t) d += 20 * w
+    else if (ma.includes(t)) d += 6 * w
+    if (ten === t) d += 15 * w
+    else if (ten.includes(t)) d += 8 * w
+    if (khoa.includes(t)) d += 5 * w
+    if (mo.includes(t)) moKhop += w
   }
-  // Trúng nhiều từ liền nhau trong tên là dấu hiệu chắc nhất.
+
+  // Mô tả chỉ được góp tối đa 2 điểm cho CẢ tin, không cộng dồn từng từ. Bản
+  // trước cộng dồn, nên 30 sản phẩm có mô tả (toàn hộp quà) luôn thắng 54 sản
+  // phẩm mô tả trống — mà 54 cái kia mới là trà bán chạy.
+  d += Math.min(2, moKhop)
+
+  // Trúng nguyên cụm trong tên là dấu hiệu chắc nhất.
   if (ten.includes(bo_dau(terms.join(' ')))) d += 12
   return d
+}
+
+/**
+ * Trọng số từng từ theo độ hiếm: khớp càng nhiều sản phẩm thì càng vô nghĩa.
+ * Tính trên TOÀN danh mục chứ không phải trên tập đã lọc, nếu không thì từ nào
+ * cũng "hiếm" vì tập lọc chỉ còn thứ đã khớp.
+ */
+export function tinhTrongSo(terms: string[], toanBo: Array<{ name: string | null; keywords: string | null }>): Map<string, number> {
+  const w = new Map<string, number>()
+  const tong = Math.max(1, toanBo.length)
+  for (const t0 of terms) {
+    const t = bo_dau(t0)
+    const n = toanBo.filter((r) => bo_dau(`${r.name ?? ''} ${r.keywords ?? ''}`).includes(t)).length
+    const tyLe = n / tong
+    // >50% danh mục: gần như vô giá trị. 20–50%: yếu. Dưới 20%: giữ nguyên.
+    w.set(t, tyLe > 0.5 ? 0.1 : tyLe > 0.2 ? 0.4 : 1)
+  }
+  return w
 }
 
 export async function retrieveProductDocs(
@@ -172,22 +206,12 @@ export async function retrieveProductDocs(
   )].slice(0, 8)
   const needles = terms.length ? terms : [q]
 
-  const rows = await prisma.productDoc.findMany({
-    where: {
-      orgId,
-      OR: needles.flatMap((t) => [
-        { name: { contains: t, mode: 'insensitive' as const } },
-        { keywords: { contains: t, mode: 'insensitive' as const } },
-        { productCode: { contains: t, mode: 'insensitive' as const } },
-        { description: { contains: t, mode: 'insensitive' as const } },
-      ]),
-    },
-    // Lấy rộng rồi tự xếp hạng: sắp theo updatedAt là trả về sản phẩm sửa gần
-    // nhất chứ không phải sản phẩm khách đang hỏi — hỏi "trà đinh ngọc" mà ra
-    // "bộ ấm chén" thì AI tư vấn nhầm hàng, tệ hơn là không trả lời.
-    orderBy: { updatedAt: 'desc' },
-    take: 40,
-  })
+  // Nạp trọn danh mục rồi xếp trong bộ nhớ. 84 sản phẩm là quá nhỏ để phải
+  // lọc ở cơ sở dữ liệu, mà lọc trước thì không tính được độ hiếm của từ —
+  // thứ quyết định xếp hạng đúng hay sai.
+  const rows = await prisma.productDoc.findMany({ where: { orgId } })
+  const trongSo = tinhTrongSo(needles, rows)
+
 
   // Dựng sẵn link ở đây thay vì để AI tự ghép: mã Mini App có dấu gạch chéo
   // nên phải mã hoá, mà mô hình ghép chuỗi thì sai lúc nào không biết — khách
@@ -195,8 +219,10 @@ export async function retrieveProductDocs(
   // Chỉ giữ những dòng thật sự khớp tên/mã/từ khoá. Trúng mỗi mô tả (điểm ≤ số
   // từ) là nhiễu — thà trả ít còn hơn đưa AI sản phẩm sai.
   const cham = rows
-    .map((r) => ({ r, d: diemKhop(r, needles) }))
-    .filter((x) => x.d > needles.length)
+    .map((r) => ({ r, d: diemKhop(r, needles, trongSo) }))
+    // Ngưỡng theo tổng trọng số: câu chỉ toàn từ chung chung thì không sản phẩm
+    // nào "khớp", và trả rỗng còn hơn trả bừa 5 món không liên quan.
+    .filter((x) => x.d >= 4)
     .sort((a, b) => b.d - a.d)
 
   // Khi đã có một kết quả khớp mạnh thì cắt bỏ phần đuôi khớp yếu hẳn. Đưa
@@ -228,4 +254,60 @@ export async function retrieveProductDocs(
     imageCount: r.images.length,
     videoCount: r.videoUrls.length,
   }))
+}
+
+/**
+ * Bản đồ danh mục: nhóm nào có bao nhiêu món, khoảng giá, vài cái tên tiêu biểu.
+ *
+ * Tìm theo từ khoá không trả lời được câu "bên mình có những loại trà nào?" —
+ * câu đó không có từ khoá nào để tìm. Trước đây tìm trả rỗng, AI bèn tự bịa ra
+ * "17 loại trà xanh, 6 loại trà dược, 15 mẫu hộp biếu", và tệ hơn: khi khách
+ * hỏi lại thì AI khẳng định công ty KHÔNG có trà móc câu — mặt hàng chủ lực.
+ *
+ * Nên luôn đưa bản đồ này vào ngữ cảnh. Nó nhỏ (khoảng 20 dòng) mà chặn đứng
+ * cả việc bịa lẫn việc chối nhầm hàng công ty đang bán.
+ */
+const CACHE_DANH_MUC_MS = 300_000
+const cacheDanhMuc = new Map<string, { at: number; text: string }>()
+
+export async function banDoDanhMuc(orgId: string): Promise<string> {
+  const hit = cacheDanhMuc.get(orgId)
+  if (hit && Date.now() - hit.at < CACHE_DANH_MUC_MS) return hit.text
+
+  const [rows, gia] = await Promise.all([
+    prisma.productDoc.findMany({
+      where: { orgId },
+      select: { name: true, productCode: true, folder: { select: { name: true, parent: { select: { name: true } } } } },
+    }),
+    bangGiaTheoMa(orgId),
+  ])
+
+  const nhom = new Map<string, { ten: string[]; gia: number[] }>()
+  for (const r of rows) {
+    if (!r.folder) continue
+    const khoa = r.folder.parent ? `${r.folder.parent.name} › ${r.folder.name}` : r.folder.name
+    if (!nhom.has(khoa)) nhom.set(khoa, { ten: [], gia: [] })
+    const o = nhom.get(khoa)!
+    if (r.name) o.ten.push(r.name)
+    const g = gia.get(r.productCode.trim().toUpperCase())?.price
+    if (g != null) o.gia.push(g)
+  }
+
+  const vnd = (n: number) => `${new Intl.NumberFormat('vi-VN').format(n)}đ`
+  const dong = [...nhom.entries()]
+    .filter(([, v]) => v.ten.length > 0)
+    .sort((a, b) => b[1].ten.length - a[1].ten.length)
+    .map(([khoa, v]) => {
+      const min = v.gia.length ? Math.min(...v.gia) : null
+      const max = v.gia.length ? Math.max(...v.gia) : null
+      const khoangGia = min != null ? ` · ${min === max ? vnd(min) : `${vnd(min)}–${vnd(max!)}`}` : ''
+      // Ba cái tên là đủ để AI gọi đúng tên hàng; nhiều hơn thì lời nhắc phình
+      // ra mà không giúp thêm — cần chi tiết thì đã có khối tài liệu sản phẩm.
+      const vd = v.ten.slice(0, 3).join(', ')
+      return `- ${khoa}: ${v.ten.length} sản phẩm${khoangGia}. Ví dụ: ${vd}${v.ten.length > 3 ? '…' : ''}`
+    })
+
+  const text = dong.join('\n')
+  cacheDanhMuc.set(orgId, { at: Date.now(), text })
+  return text
 }
