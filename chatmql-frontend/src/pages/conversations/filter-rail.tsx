@@ -157,7 +157,17 @@ export function FilterRail({
                     <AvatarImage src={acc.avatarUrl ?? undefined} alt={name} />
                     <AvatarFallback className="text-xs">{initials(acc.displayName)}</AvatarFallback>
                   </Avatar>
-                  <span className="min-w-0 flex-1 truncate">{name}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{name}</span>
+                    {/* Bốn nick cùng tên "Hoài Chang Trà Dược Việt Nam", chỉ
+                        khác số điện thoại. Không hiện số thì chọn nhầm nick mà
+                        không hiểu vì sao danh sách khách lại khác. */}
+                    {acc.phone && (
+                      <span className="block truncate text-[10.5px] tabular-nums text-muted-foreground">
+                        {acc.phone}
+                      </span>
+                    )}
+                  </span>
                   <Badge variant={meta.variant} className="shrink-0 px-1.5 py-0 text-[10px]">
                     {meta.label}
                   </Badge>

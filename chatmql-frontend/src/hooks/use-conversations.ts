@@ -56,6 +56,8 @@ export interface ChatContact {
 export interface ChannelAccount {
   id: string
   displayName: string
+  /** Thứ duy nhất phân biệt được các nick trùng tên. */
+  phone?: string | null
   externalUid?: string | null
   platform: number
 }

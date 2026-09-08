@@ -285,7 +285,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
             aiIntent: true, aiPainPoints: true, aiCompetitors: true, aiSignals: true,
             aiAnalyzedAt: true, aiConversationId: true,
           } },
-          channelAccount: { select: { id: true, displayName: true, externalUid: true, platform: true } },
+          channelAccount: { select: { id: true, displayName: true, phone: true, externalUid: true, platform: true } },
           pins: { select: { id: true } },
           messages: {
             take: 1,
@@ -322,7 +322,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       where: { id: request.params.id, orgId: user.orgId },
       include: {
         contact: { include: { company: { select: { id: true, name: true, industry: true, taxCode: true } } } },
-        channelAccount: { select: { id: true, displayName: true, externalUid: true, status: true, platform: true } },
+        channelAccount: { select: { id: true, displayName: true, phone: true, externalUid: true, status: true, platform: true } },
         pins: { select: { id: true } },
       },
     })

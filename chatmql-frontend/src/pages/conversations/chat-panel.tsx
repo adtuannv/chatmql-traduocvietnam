@@ -580,6 +580,11 @@ export function ChatPanel({ convId }: { convId: string }) {
               <p className="truncate text-xs text-muted-foreground">
                 {platformLabel(conv?.channelAccount?.platform)}
                 {conv?.channelAccount?.displayName ? ` · ${conv.channelAccount.displayName}` : ''}
+                {/* Số điện thoại là thứ duy nhất phân biệt được các nick trùng
+                    tên — công ty có tới bốn nick cùng tên "Hoài Chang Trà Dược
+                    Việt Nam", chỉ khác số. Thiếu nó thì nhìn tiêu đề không biết
+                    mình đang trực bằng nick nào. */}
+                {conv?.channelAccount?.phone ? ` · ${conv.channelAccount.phone}` : ''}
               </p>
               {isGroup && convId && (
                 <GroupMembersMenu convId={convId} members={groupMembers} />

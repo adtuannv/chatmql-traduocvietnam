@@ -65,6 +65,12 @@ interface Props {
   onAddFriend: () => void
   onMarkAllRead: () => void
   onRefresh: () => void
+  /**
+   * Đang xem gộp nhiều tài khoản → phải ghi rõ mỗi hội thoại thuộc nick nào.
+   * Công ty có 17 nick Zalo, bốn nick trùng tên nhau, nên không ghi ra thì
+   * không biết đang nhìn khách của ai.
+   */
+  showAccount?: boolean
 }
 
 export function ConversationList({
@@ -80,6 +86,7 @@ export function ConversationList({
   onAddFriend,
   onMarkAllRead,
   onRefresh,
+  showAccount = false,
 }: Props) {
   const { data: tags = [] } = useTags()
   const activeTag = tags.find((t) => t.name === tag)
@@ -212,6 +219,7 @@ export function ConversationList({
                 tagColor={tagColor}
                 onClick={() => onSelect(c.id)}
                 canDelete={canDelete}
+                showAccount={showAccount}
               />
             ))}
           </ul>
@@ -227,12 +235,14 @@ function ConversationRow({
   tagColor,
   onClick,
   canDelete,
+  showAccount,
 }: {
   conv: ConversationListItem
   active: boolean
   tagColor: (name: string) => string
   onClick: () => void
   canDelete: boolean
+  showAccount: boolean
 }) {
   const unread = conv.unreadCount > 0
   const last = conv.messages?.[0]
@@ -328,6 +338,15 @@ function ConversationRow({
               {formatRelativeTime(conv.lastMessageAt)}
             </span>
           </div>
+
+          {/* Nick đang trực hội thoại này. Chỉ hiện khi xem gộp — lọc về một
+              tài khoản rồi thì lặp lại 50 dòng giống nhau chỉ tổ rối. */}
+          {showAccount && conv.channelAccount?.displayName && (
+            <p className="truncate text-[10.5px] text-muted-foreground/80">
+              {conv.channelAccount.displayName}
+              {conv.channelAccount.phone ? ` · ${conv.channelAccount.phone}` : ''}
+            </p>
+          )}
 
           {/* Dòng 2: nhãn + nội dung tin cuối (1 dòng, cắt bằng …) + số chưa đọc */}
           <div className="mt-0.5 flex items-center gap-1.5">

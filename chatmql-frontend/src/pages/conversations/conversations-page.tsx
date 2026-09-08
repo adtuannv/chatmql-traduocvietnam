@@ -156,6 +156,7 @@ export function ConversationsPage() {
         {/* Cột danh sách hội thoại */}
         <aside className="flex w-72 shrink-0 flex-col border-r lg:w-80">
           <ConversationList
+          showAccount={!accountId}
             items={conversations}
             activeId={activeId}
             search={searchInput}

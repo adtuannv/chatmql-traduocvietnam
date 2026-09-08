@@ -368,8 +368,15 @@ export function AiTrainPage() {
                           type="checkbox" checked={selectedChannels.includes(ch.id)}
                           onChange={() => toggleChannel(ch.id)} disabled={!canEdit}
                         />
-                        <span className="truncate">{ch.displayName || 'Kênh chưa đặt tên'}</span>
-                        <Badge variant="outline" className="ml-auto shrink-0">{platformName(ch.platform)}</Badge>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{ch.displayName || 'Kênh chưa đặt tên'}</span>
+                          {ch.phone && (
+                            <span className="block truncate text-[10.5px] tabular-nums text-muted-foreground">
+                              {ch.phone}
+                            </span>
+                          )}
+                        </span>
+                        <Badge variant="outline" className="shrink-0">{platformName(ch.platform)}</Badge>
                       </label>
                     ))}
                   </div>
