@@ -35,6 +35,29 @@ const PER_CLAIM_GROUNDING_RULE = `- QUY TẮC GROUNDING TỪNG Ý (chống bịa
   • SAI: "Dạ shop có giao tận nơi ở Đà Nẵng, thường giao trong 2 ngày ạ."
   • ĐÚNG: "Dạ thời gian giao thường là 2 ngày làm việc ạ. Còn khu vực Đà Nẵng có giao tận nơi không thì em kiểm tra lại rồi báo anh/chị ngay nhé."`
 
+/**
+ * Lượt này khách đang chốt mua chưa.
+ *
+ * Router đã phân loại đúng (`order_request`, `quantity_specification`) nhưng
+ * phần sinh câu trả lời vẫn đi chào mời tiếp, vì tài liệu tiêu chí bắt "cuối
+ * mỗi tin BẮT BUỘC có câu hỏi dẫn dắt" và "ưu tiên mời cỡ nhỏ dùng thử". Khách
+ * nói "cho mình mỗi thứ 100g" mà bị mời gói nhỏ hơn là đang bị nói cho thôi mua.
+ *
+ * Nên chặn ngay ở đây: có tín hiệu mua thì câu lệnh chốt đơn ĐẶT SAU tài liệu
+ * tiêu chí, và cái đọc sau thắng.
+ */
+const Y_DINH_MUA = /order|purchase|checkout|quantity|buy|chot|dat_hang/i
+
+function khoiChotDon(intents: string[]): string {
+  return `\n## LƯỢT NÀY KHÁCH ĐANG CHỐT MUA (${intents.join(', ')}) — ưu tiên cao hơn mọi hướng dẫn tư vấn ở trên
+- KHÔNG giới thiệu thêm sản phẩm mới. KHÔNG liệt kê lại thứ vừa tư vấn.
+- KHÔNG mời cỡ nhỏ hơn, KHÔNG mời "dùng thử", KHÔNG gợi ý cân nhắc lại. Khách đã chọn rồi.
+- Xác nhận đúng thứ khách chốt: tên sản phẩm + quy cách + số lượng + đơn giá + TỔNG TIỀN.
+- Thiếu tên / số điện thoại / địa chỉ thì hỏi đúng phần còn thiếu, gộp trong MỘT tin.
+- Đủ thông tin thì GỌI create_order, rồi đọc lại đơn cho khách xác nhận.
+- KHÔNG kết thúc bằng câu hỏi mở kiểu "anh/chị muốn tham khảo thêm gì không ạ".`
+}
+
 export function buildGeneratorPrompt(ctx: HarnessContext, decision: RouterDecision, toolScopeNote?: string): string {
   const parts: string[] = []
 
@@ -85,6 +108,7 @@ export function buildGeneratorPrompt(ctx: HarnessContext, decision: RouterDecisi
   // Router intents for focused reply
   if (decision.intents && decision.intents.length > 0) {
     parts.push(`\n## Detected Intents\n${decision.intents.join(', ')}`)
+    if (decision.intents.some((i) => Y_DINH_MUA.test(i))) parts.push(khoiChotDon(decision.intents))
   }
 
   // Guardrail scope (set by Master/staff): which data the reply may draw from.
@@ -233,6 +257,7 @@ export function buildAgentSystemPrompt(ctx: HarnessContext, decision: RouterDeci
   }
   if (decision.intents && decision.intents.length > 0) {
     parts.push(`\n## Detected Intents\n${decision.intents.join(', ')}`)
+    if (decision.intents.some((i) => Y_DINH_MUA.test(i))) parts.push(khoiChotDon(decision.intents))
   }
   if (ctx.recentMessages.length > 0) {
     const transcript = ctx.recentMessages.map((m) => `[${m.role === 'customer' ? 'Customer' : 'Agent'}]: ${m.text}`).join('\n')
