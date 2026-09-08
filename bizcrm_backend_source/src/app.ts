@@ -68,6 +68,7 @@ import { initTraceRetentionCron } from './modules/ai/observability/trace-retenti
 import { traceRoutes } from './modules/ai/observability/trace-routes.js'
 import { simulateRoutes } from './modules/ai/simulate-routes.js'
 import { initTraceCleanup } from './modules/ai/observability/trace-cleanup-job.js'
+import { createHash } from 'node:crypto'
 import rateLimit from '@fastify/rate-limit'
 import fastifyCachePlugin from './shared/fastify-cache-plugin.js'
 import { pollConversationIdle } from './modules/automation/conversation-idle-poller.js'
@@ -97,16 +98,27 @@ import { roleRoutes } from './modules/settings/role-routes.js'
 import { CHAT_MEDIA_DIR } from './modules/chat/chat-media-store.js'
 import { embedAndStoreProduct } from './modules/products/product-embedding.js'
 
-const app = Fastify({ logger: true })
+// trustProxy: BẮT BUỘC khi chạy sau nginx. Thiếu nó thì `req.ip` là IP của
+// nginx (172.18.0.1) cho MỌI request, nên bộ chặn tần suất gom cả công ty vào
+// chung một rổ 200 lượt/phút — máy chủ tự chặn chính nhân viên của mình. Đã xảy
+// ra thật: 9.674/9.714 request bị nhìn thành cùng một IP.
+const app = Fastify({ logger: true, trustProxy: true })
 
-// W6-FIX: Global rate limiting — DDoS baseline.
-// Dev: 1000/min (localhost sends all requests from same IP).
-// Prod: 200/min per IP.
+// Chặn tần suất — nền chống lạm dụng.
+//
+// Đếm theo PHIÊN ĐĂNG NHẬP, không theo IP: cả văn phòng đi chung một đường
+// truyền nên gom theo IP là 20 nhân viên chia nhau một rổ. Bộ chặn chạy trước
+// lớp xác thực nên chưa có `req.user`, đành băm chuỗi Authorization — vẫn tách
+// được từng người mà không phải chờ xác thực.
 const isDev = process.env.NODE_ENV !== 'production'
 await app.register(rateLimit, {
-  max: isDev ? 1000 : 200,
+  max: isDev ? 1000 : 600,
   timeWindow: '1 minute',
-  keyGenerator: (req) => req.ip,
+  keyGenerator: (req) => {
+    const auth = req.headers.authorization
+    if (auth) return 'u:' + createHash('sha256').update(auth).digest('hex').slice(0, 32)
+    return 'ip:' + req.ip
+  },
 })
 
 // CORS: In production, restrict to Cloudflare Pages domain(s)

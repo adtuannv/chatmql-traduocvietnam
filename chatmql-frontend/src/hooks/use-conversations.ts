@@ -199,6 +199,30 @@ export interface ConversationsQueryParams {
   limit?: number
 }
 
+/**
+ * Gộp các lượt làm mới danh sách hội thoại lại.
+ *
+ * Mỗi tin nhắn đến từ bất kỳ trong 16 nick Zalo đều bắn socket, và trước đây
+ * mỗi lần bắn là gọi lại NGAY hai API `conversations` và `conversations/counts`.
+ * Giờ cao điểm thành ~50 lượt/phút mỗi nhân viên, đủ để máy chủ chặn lại.
+ *
+ * Chờ một nhịp ngắn rồi gọi một lần: một loạt 20 tin dồn dập chỉ tốn một lượt
+ * gọi, mà mắt thường không thấy chậm hơn.
+ */
+const NHIP_GOP_MS = 900
+
+function tạoLàmMớiGộp(qc: QueryClient): () => void {
+  let hen: ReturnType<typeof setTimeout> | null = null
+  return () => {
+    if (hen) return
+    hen = setTimeout(() => {
+      hen = null
+      void qc.invalidateQueries({ queryKey: ['conversations'] })
+      void qc.invalidateQueries({ queryKey: ['conversation-counts'] })
+    }, NHIP_GOP_MS)
+  }
+}
+
 export function useConversations(params: ConversationsQueryParams) {
   const query: Record<string, unknown> = {
     tab: params.tab,
@@ -702,10 +726,7 @@ export function useChatRealtime(convId: string | undefined): ChatRealtimeState {
     const socket = getSocket()
     joinConversation(convId)
 
-    const invalidateList = () => {
-      qc.invalidateQueries({ queryKey: ['conversations'] })
-      qc.invalidateQueries({ queryKey: ['conversation-counts'] })
-    }
+    const invalidateList = tạoLàmMớiGộp(qc)
 
     const onMessage = (msg: ChatMessage) => {
       const target = msg.conversationId || convId
@@ -877,10 +898,7 @@ export function useConversationListRealtime() {
   useEffect(() => {
     const socket = getSocket()
 
-    const invalidateList = () => {
-      qc.invalidateQueries({ queryKey: ['conversations'] })
-      qc.invalidateQueries({ queryKey: ['conversation-counts'] })
-    }
+    const invalidateList = tạoLàmMớiGộp(qc)
 
     socket.on('connect', invalidateList) // reconnect → đồng bộ lại danh sách đã lỡ
     socket.on('chat:conv-updated', invalidateList)
