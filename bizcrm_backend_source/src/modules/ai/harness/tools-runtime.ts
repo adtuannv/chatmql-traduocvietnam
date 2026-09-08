@@ -5,14 +5,13 @@
  * retrieval and ENFORCES that tool's guardrail (allowed categories) in code.
  * Disabled tools are never exposed. Used by reply-generator's agentic loop.
  */
-import { retrieveProductSemantic } from '../../products/product-embedding.js'
 import { formatProductPrice } from '../../products/product-price.js'
 import { retrieveKb } from '../../knowledge/kb-service.js'
 import { retrieveKbSemantic } from '../../knowledge/embedding-service.js'
 import { aggregate } from '../../products/product-query-service.js'
 import { TOOL_NAMES, type ToolName, type ToolsConfig } from '../tools-config-service.js'
 import type { OpenaiToolDef } from '../providers/openai.js'
-import { retrieveProductDocs } from '../../product-docs/product-docs-service.js'
+import { retrieveProductDocs, banDoDanhMuc, type ProductDocSnippet } from '../../product-docs/product-docs-service.js'
 import { retrieveDocAssets } from '../../doc-library/doc-library-service.js'
 import { prisma } from '../../../shared/prisma-client.js'
 import { isImageAvailable } from '../../chat/send-image-core.js'
@@ -301,9 +300,16 @@ async function formatOverview(orgId: string, tools: ToolsConfig): Promise<string
   const agg = await aggregate(orgId)
   const lines: string[] = []
   if (tools.search_products.enabled) {
-    const prod = scopeRows(agg.productsByCategory, tools.search_products.guardrail.categoryIds)
-    const total = prod.reduce((a, b) => a + b.count, 0)
-    if (total > 0) lines.push(`SẢN PHẨM (tổng ${total}):\n${prod.map((p) => `• ${p.category}: ${p.count}`).join('\n')}`)
+    // Bản đồ danh mục thật (nhóm hàng + khoảng giá) thay cho số đếm theo danh
+    // mục của bảng nội bộ cũ. Bảng cũ đếm ra 61 sản phẩm trong khi thực tế
+    // đang bán 84 — AI đọc số sai thì nói số sai với khách.
+    const banDo = await banDoDanhMuc(orgId).catch(() => '')
+    if (banDo) {
+      lines.push(`SẢN PHẨM ĐANG BÁN — theo nhóm:\n${banDo}`)
+    }
+    // Cố ý KHÔNG kèm số đếm theo danh mục của bảng nội bộ nữa: giữ lại thì AI
+    // đọc được hai con số tổng khác nhau trong cùng một câu trả lời (61 và 84),
+    // rồi nói con số nào cũng có thể sai.
   }
   const knowIds = tools.search_knowledge.guardrail.categoryIds
   if (tools.search_knowledge.enabled) {
@@ -410,6 +416,34 @@ export async function resolveProductImage(
   return { status: 'not_found' }
 }
 
+/**
+ * Tài liệu sản phẩm thành chữ. Giá lấy thẳng từ hệ thống nguồn tại thời điểm
+ * trả lời, nên đây là con số đúng để báo khách.
+ */
+/** Tài liệu trong thư viện bán hàng, nói rõ cái nào gửi được cho khách. */
+function formatTaiLieu(ds: Array<{ title: string; kind: string; description: string | null; textContent: string | null; sendable: boolean }>): string {
+  return ds.map((d) => {
+    const noi = [d.description, d.textContent].filter(Boolean).join(' ').slice(0, MAX_SNIPPET)
+    return `### ${d.title}${d.sendable ? ' (GỬI ĐƯỢC cho khách bằng send_document)' : ''}\n${noi}`
+  }).join('\n\n')
+}
+
+function formatProductDocs(docs: ProductDocSnippet[]): string {
+  const vnd = (n: number) => `${new Intl.NumberFormat('vi-VN').format(n)}đ`
+  return docs.map((d) => {
+    const gia = d.price != null
+      ? `${vnd(d.price)}${d.priceMax != null ? `–${vnd(d.priceMax)}` : ''}${d.unit ? `/${d.unit}` : ''}`
+      : 'chưa có giá'
+    const media = [d.imageCount ? `${d.imageCount} ảnh` : '', d.videoCount ? `${d.videoCount} video` : '']
+      .filter(Boolean).join(', ')
+    return [
+      `- ${d.name ?? d.productCode} (mã ${d.productCode}) — ${gia}${media ? ` · có ${media}` : ''}`,
+      d.description ? `  ${d.description.slice(0, MAX_SNIPPET)}` : '',
+      d.miniAppUrl ? `  Link đặt hàng (dán nguyên văn): ${d.miniAppUrl}` : '',
+    ].filter(Boolean).join('\n')
+  }).join('\n')
+}
+
 export async function executeTool(
   orgId: string,
   name: string,
@@ -427,16 +461,39 @@ export async function executeTool(
   const ids = tool.guardrail.categoryIds
 
   if (name === 'search_products') {
-    const rows = await retrieveProductSemantic(orgId, query, topK, { categoryIds: ids, minScore })
-    const hits = rows.map((r) => ({ label: r.name, score: r.score ?? null }))
-    return { text: rows.length === 0 ? notFoundMsg(ids, 'sản phẩm') : formatProducts(rows), hits }
+    // Đọc TÀI LIỆU SẢN PHẨM — tức danh mục CRM đang bán — chứ không đọc bảng
+    // `products` nội bộ.
+    //
+    // Bảng nội bộ là danh mục cũ: 61 dòng đang bật, còn lẫn đồ thể dục thể
+    // thao, tên và quy cách đã lỗi thời so với 84 sản phẩm bên hệ thống nguồn.
+    // Để công cụ đọc bảng đó thì AI tra ra một danh mục, còn phần nạp sẵn vào
+    // lời nhắc lại là danh mục khác — hai nguồn nói hai kiểu trong cùng một
+    // lượt trả lời.
+    const docs = await retrieveProductDocs(orgId, query, topK)
+    const hits = docs.map((d) => ({ label: d.name ?? d.productCode, score: null }))
+    if (docs.length === 0) return { text: notFoundMsg(ids, 'sản phẩm'), hits }
+    return { text: formatProductDocs(docs), hits }
   }
   // search_knowledge covers ALL KB formats (FAQ + articles) in ONE query — no format
   // split, so the model can never mis-route between two near-identical knowledge tools.
   const fb = (o: string, q: string, k: number) => retrieveKb(o, q, k, { categoryIds: ids })
-  const rows = await retrieveKbSemantic(orgId, query, topK, fb, { categoryIds: ids, minScore })
-  const hits = rows.map((r) => ({ label: r.title, score: r.score ?? null }))
-  return { text: rows.length === 0 ? notFoundMsg(ids, 'thông tin') : formatKb(rows), hits }
+  // Tra SONG SONG cả kho tri thức lẫn thư viện tài liệu bán hàng. Biểu giá,
+  // chính sách, hồ sơ đều nằm ở thư viện chứ không nằm trong kho tri thức —
+  // trước đây công cụ này không với tới nên khách hỏi chính sách là AI báo
+  // không có, dù đội ngũ đã soạn xong và để sẵn ở đó.
+  const [rows, taiLieu] = await Promise.all([
+    retrieveKbSemantic(orgId, query, topK, fb, { categoryIds: ids, minScore }),
+    retrieveDocAssets(orgId, query, 3).catch(() => []),
+  ])
+  const hits = [
+    ...rows.map((r) => ({ label: r.title, score: r.score ?? null })),
+    ...taiLieu.map((d) => ({ label: d.title, score: null })),
+  ]
+  const phan = [
+    rows.length ? formatKb(rows) : '',
+    taiLieu.length ? formatTaiLieu(taiLieu) : '',
+  ].filter(Boolean)
+  return { text: phan.length === 0 ? notFoundMsg(ids, 'thông tin') : phan.join('\n\n'), hits }
 }
 
 /**
