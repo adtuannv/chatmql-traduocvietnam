@@ -8,7 +8,7 @@
  * `visibility` quyết định tài nguyên có được gửi ra khách không; backend chặn
  * theo cờ này chứ không chỉ nhắc trong prompt AI.
  */
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -103,13 +103,32 @@ export function DocLibraryPage() {
   }
   const navigate = useNavigate()
 
+  // Đo chiều cao cụm tiêu đề để ghim thanh công cụ ngay bên dưới nó.
+  //
+  // Không dùng số cứng: ở màn hẹp cụm tiêu đề xuống dòng thành hai tầng, số
+  // cứng sẽ để hở một khoảng hoặc che mất dòng đầu danh sách.
+  const headerRef = useRef<HTMLDivElement>(null)
+  const [caoHeader, setCaoHeader] = useState(0)
+  useLayoutEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const do_ = () => setCaoHeader(el.offsetHeight)
+    do_()
+    const ro = new ResizeObserver(do_)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Tiêu đề, lối quay lại và nút thao tác trên CÙNG một hàng. Trước đây ba
           thứ này xếp thành ba tầng, ăn gần một phần ba chiều cao màn hình trước
           khi thấy được tài liệu nào. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b pb-3">
+      <div
+        ref={headerRef}
+        className="sticky top-0 z-20 -mx-6 -mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-background px-6 pb-3 pt-6"
+      >
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -134,10 +153,13 @@ export function DocLibraryPage() {
         )}
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-5 pt-4 lg:grid-cols-[230px_1fr]">
+      <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[230px_1fr]">
         {/* Cây thư mục: cố định chỗ, dài quá thì tự cuộn trong cột — không đẩy
             cả trang dài ra rồi phải cuộn xuống mới thấy danh sách tài liệu. */}
-        <aside className="space-y-1 lg:sticky lg:top-0 lg:max-h-[calc(100vh-11rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
+        <aside
+          style={{ top: caoHeader, maxHeight: `calc(100vh - ${caoHeader + 96}px)` }}
+          className="space-y-1 lg:sticky lg:self-start lg:overflow-y-auto lg:pr-1"
+        >
           <FolderRow label="Tất cả tài nguyên" count={totalAssets} active={folderId === ALL} onClick={() => setFolderId(ALL)} />
           <FolderRow label="Chưa xếp thư mục" active={folderId === UNFILED} onClick={() => setFolderId(UNFILED)} />
           {foldersQ.isLoading ? (
@@ -169,7 +191,10 @@ export function DocLibraryPage() {
         <section className="min-w-0 space-y-3">
           {/* Ghim lại: cuộn danh sách dài mà mất ô tìm thì phải cuộn ngược lên
               đầu chỉ để gõ một từ. */}
-          <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-2 bg-background px-1 pb-2 pt-0.5">
+          <div
+            style={{ top: caoHeader }}
+            className="sticky z-10 -mx-1 flex flex-wrap items-center gap-2 border-b bg-background px-1 pb-2.5 pt-3"
+          >
             <div className="relative min-w-[200px] flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm theo tiêu đề, mô tả, nội dung…" className="pl-9" />
