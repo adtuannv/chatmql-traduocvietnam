@@ -30,6 +30,7 @@ import { buildRouterPrompt, parseRouterDecision } from '../prompts/ai-router.js'
 import { buildGeneratorPrompt, buildAgentSystemPrompt } from '../prompts/auto-reply.js'
 import { buildCriticPrompt, parseCriticVerdict } from '../prompts/critic.js'
 import { getToolsConfig, buildToolScopeNote, type ToolsConfig } from '../tools-config-service.js'
+import { thayBien } from '../runtime-context.js'
 import { buildOpenaiTools, executeTool, resolveProductImage, formatOrders, HANDOFF_TOOL, APPOINTMENT_TOOL, ORDER_TOOL, LOOKUP_ORDER_TOOL, LOG_GAP_TOOL, SEND_IMAGE_TOOL, type ResolvedProductImage } from './tools-runtime.js'
 import { prisma } from '../../../shared/prisma-client.js'
 import { fetchCustomerOrders } from '../../orders/crm-order-client.js'
@@ -420,8 +421,14 @@ export async function runHarness(
   // của bot đi thẳng vào ctx KHÔNG qua truncate → bot "xịn" được vô hạn ký tự
   // trong khi org bị cắt (bất nhất + nổ ngân sách token). FE hiển thị đúng
   // ngân sách này nên người soạn biết trước phần nào sẽ bị cắt.
-  if (bot?.personaPrompt) ctx.logic.persona = truncate(bot.personaPrompt, budgets.persona)
-  if (bot?.playbookPrompt) ctx.logic.playbook = truncate(bot.playbookPrompt, budgets.playbook)
+  //
+  // Prompt riêng của bot cũng phải qua bước thay {{biến}} như tài liệu nền —
+  // nếu không thì bot nào soạn theo mẫu runtime context sẽ đọc nguyên chuỗi
+  // `{{account_name}}` ra cho khách.
+  const thay = (v: string, cap: number) =>
+    truncate(ctx.runtime ? (thayBien(v, ctx.runtime) ?? v) : v, cap)
+  if (bot?.personaPrompt) ctx.logic.persona = thay(bot.personaPrompt, budgets.persona)
+  if (bot?.playbookPrompt) ctx.logic.playbook = thay(bot.playbookPrompt, budgets.playbook)
 
   // ── Pass 1: router ──────────────────────────────────────────────────────────
   const routerCfg = withBotModel(getEffectiveConfigForTask(cfg, 'ai_router'))

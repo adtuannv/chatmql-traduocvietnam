@@ -1,3 +1,4 @@
+import type { RuntimeContext } from '../runtime-context.js'
 /**
  * harness-types.ts — Shared type definitions for the AI auto-reply harness (M1).
  * Two-pass engine: router (pass 1) → generator (pass 2).
@@ -120,6 +121,8 @@ export interface HarnessContext {
   docAssets: DocAssetSnippet[]
   /** Bản đồ danh mục: nhóm nào có gì, khoảng giá. Chặn bịa và chối nhầm hàng. */
   banDoDanhMuc?: string
+  /** Dữ liệu phiên: tài khoản đang trực, thời gian thật, khách là ai. */
+  runtime?: RuntimeContext
   /** L2 — contact fact sheet (null if no contact yet). */
   contact: ContactProfile | null
   /** L3 — thread/contact memory facts (active facts for this contact). */

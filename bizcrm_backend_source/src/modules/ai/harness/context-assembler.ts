@@ -13,6 +13,7 @@
  */
 import { prisma } from '../../../shared/prisma-client.js'
 import { getActiveLogicContext } from '../logic-doc-service.js'
+import { layRuntimeContext, thayBien } from '../runtime-context.js'
 import { getAlwaysScenarios, retrieveRelevantScenarios } from '../scenario-service.js'
 import { retrieveKb } from '../../knowledge/kb-service.js'
 import { retrieveKbSemantic } from '../../knowledge/embedding-service.js'
@@ -268,7 +269,7 @@ export async function assembleContext(
   // In agent mode (skipRag) the generator fetches KB/products via tool calls,
   // so we don't pre-fetch them here (avoids double retrieval).
   // Parallelize all layer loads (each KB/product tool gated by its own config)
-  const [logic, scenarios, contact, threadMemory, staffNotes, kbSnippets, products, productDocs, docAssets, banDo, recentMessages] = await Promise.all([
+  const [logic, scenarios, contact, threadMemory, staffNotes, kbSnippets, products, productDocs, docAssets, banDo, runtime, recentMessages] = await Promise.all([
     getActiveLogicContext(orgId),                                                          // L0
     loadScenarios(orgId, turnText, ragTopK, budgets.l0bScenarios, opts.minScore),          // L0b
     contactId ? loadContactProfile(contactId) : Promise.resolve(null),                    // L2
@@ -281,19 +282,25 @@ export async function assembleContext(
     retrieveProductDocs(orgId, turnText, 5).catch(() => [] as ProductDocSnippet[]),          // L1c
     retrieveDocAssets(orgId, turnText, 5).catch(() => [] as DocAssetSnippet[]),               // L1d
     banDoDanhMuc(orgId).catch(() => ''),                                                     // L1e
+    layRuntimeContext(convId),                                                               // dữ liệu phiên
     loadRecentMessages(convId, budgets.l5Messages, opts.historyBefore),                     // L5
   ])
 
   // Char-cap L0 docs individually so no single doc dominates.
   // Tỷ lệ giữ như trước: persona/index/handoff/mechanism = l0Total/4 → budgets.index|persona,
   // playbook/criteria = l0Total/2 → budgets.playbook (criteria dùng chung mức playbook).
+  // Thay {{biến}} TRƯỚC khi cắt độ dài: cắt trước thì có thể cắt đứt giữa một
+  // chuỗi `{{account_name}}`, để lại `{{account_na` trong prompt.
+  const bien = (v: string | null, cap: number) =>
+    v ? truncate(thayBien(v, runtime) ?? v, cap) : null
+
   const cappedLogic = {
-    index: logic.index ? truncate(logic.index, budgets.index) : null,
-    persona: logic.persona ? truncate(logic.persona, budgets.persona) : null,
-    playbook: logic.playbook ? truncate(logic.playbook, budgets.playbook) : null,
-    handoff_rules: logic.handoff_rules ? truncate(logic.handoff_rules, budgets.index) : null,
-    mechanism: logic.mechanism ? truncate(logic.mechanism, budgets.index) : null,
-    criteria: logic.criteria ? truncate(logic.criteria, budgets.playbook) : null,
+    index: bien(logic.index, budgets.index),
+    persona: bien(logic.persona, budgets.persona),
+    playbook: bien(logic.playbook, budgets.playbook),
+    handoff_rules: bien(logic.handoff_rules, budgets.index),
+    mechanism: bien(logic.mechanism, budgets.index),
+    criteria: bien(logic.criteria, budgets.playbook),
   }
 
   // Cap contact profile summary
@@ -311,6 +318,7 @@ export async function assembleContext(
     productDocs,
     docAssets,
     banDoDanhMuc: banDo,
+    runtime,
     contact,
     threadMemory,
     staffNotes,

@@ -5,6 +5,7 @@
  * Reply may contain \n\n to split into multiple Zalo messages (DQ7 — split at caller).
  * Native save_memory tool: M3 seam left as TODO comment.
  */
+import { khoiRuntimeContext } from '../runtime-context.js'
 import type { HarnessContext, RouterDecision, ScenarioSnippet } from '../harness/harness-types.js'
 import { formatProductPrice } from '../../products/product-price.js'
 
@@ -39,6 +40,11 @@ export function buildGeneratorPrompt(ctx: HarnessContext, decision: RouterDecisi
 
   // Core instruction — persona grounded in L0
   parts.push(`You are a helpful customer-service agent. Write a natural reply to the customer's message.`)
+
+  // Dữ liệu phiên đặt NGAY ĐẦU, trước persona và câu mẫu. Đặt cuối thì mô hình
+  // đã đọc câu mẫu ký tên một người cụ thể rồi mới thấy tên thật, và nó thường
+  // theo cái đọc trước.
+  if (ctx.runtime) parts.push(khoiRuntimeContext(ctx.runtime))
 
   // Quality criteria / guardrails — HIGHEST priority (accuracy, when to hand off, style).
   // These are tuned by staff over time via the AI Master improve-by-feedback loop.
