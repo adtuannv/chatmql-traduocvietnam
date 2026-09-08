@@ -26,7 +26,7 @@ import { EmptyState, ErrorState, Loading } from '@/components/shared/feedback'
 import { apiError } from '@/lib/api-client'
 import { cn, initials } from '@/lib/utils'
 import {
-  ACTIVITY_LABELS, ACTIVITY_TYPES, formatCombinedVip, formatDateTimeVi, formatDateVi, formatVnd,
+  ACTIVITY_LABELS, ACTIVITY_TYPES, formatMemberTier, formatDateTimeVi, formatDateVi, formatVnd,
   orderStatusVariant, toLocalInputValue,
   useCustomerActivity, useCustomerPoints, useCustomerProducts, useCustomerProfile,
   useCustomerPromotions, useUpdateCustomerSchedule,
@@ -368,7 +368,7 @@ function CrmInfoTab({ profile }: { profile: CustomerProfile }) {
         <InfoRow label="Giới tính" value={crm.gender} />
         <InfoRow label="Ngày sinh" value={formatDateVi(crm.birthday)} />
         <InfoRow label="Nguồn khách hàng" value={crm.referral_source || cm?.source} />
-        <InfoRow label="Cấp Vip" value={formatCombinedVip(crm)} />
+        <InfoRow label="Hạng hội viên" value={formatMemberTier(crm)?.text ?? '—'} />
         <InfoRow label="Nhóm KH" value={crm.nhom_kh || crm.priority_level} />
         <InfoRow label="Người phụ trách" value={crm.staff_in_charge} />
         <InfoRow label="Tần suất mua" value={crm.purchase_frequency} />

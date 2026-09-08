@@ -37,7 +37,7 @@ import {
   refreshGroupMembers, useGroupMembers, type ConversationDetail, type GroupMember,
 } from '@/hooks/use-conversations'
 import {
-  formatCombinedVip, formatDateVi, formatVnd, orderStatusVariant,
+  formatMemberTier, formatDateVi, formatVnd, orderStatusVariant,
   useCustomerOrders, useCustomerPoints, useCustomerProfile,
   type CrmCustomer, type CrmOrder, type CustomerProfile,
 } from '@/hooks/use-orders'
@@ -248,7 +248,7 @@ function CrmInfo({
     [crm.profile_note],
   )
   const points = pointsQ.data ? String(pointsQ.data.balance ?? 0) : '—'
-  const vipRank = formatCombinedVip(crm)
+  const hangHoiVien = formatMemberTier(crm)
 
   const fields: Array<{ label: string; value: string | null | undefined; full?: boolean; cls?: string }> = [
     { label: 'Mã khách hàng', value: crm.customer_code },
@@ -259,6 +259,7 @@ function CrmInfo({
     { label: 'Tổng chi tiêu', value: crm.gmv_total != null ? formatVnd(crm.gmv_total) : null },
     { label: 'Nghề nghiệp', value: crm.occupation },
     { label: 'Nhóm KH', value: crm.nhom_kh || crm.priority_level },
+    { label: 'Mã hội viên', value: crm.member_code },
     { label: 'Giới tính', value: crm.gender },
     { label: 'Ngày sinh', value: formatDateVi(crm.birthday) },
     { label: 'Email', value: chat?.email },
@@ -276,11 +277,20 @@ function CrmInfo({
       <div className="px-4 pb-4 pt-3.5">
         <div data-tour="crm-head" className="mb-2.5 flex items-center gap-2">
           <span className="shrink-0 text-[11.5px] font-bold tracking-wide text-muted-foreground">THÔNG TIN TỪ CRM</span>
-          {/* Hạng hội viên quyết định cách xưng hô và mức ưu đãi, nên đặt ngay
-              cạnh tiêu đề thay vì nằm lẫn trong lưới hai chục trường. */}
-          {vipRank && vipRank !== '—' && (
-            <Badge variant="secondary" className="h-[18px] shrink-0 px-1.5 text-[10px] font-bold tracking-wide">
-              {vipRank}
+          {/* Hạng hội viên quyết định mức giảm 5–10% và cách xưng hô, nên đặt
+              ngay cạnh tiêu đề thay vì nằm lẫn trong lưới hai chục trường. */}
+          {hangHoiVien && (
+            <Badge
+              variant="secondary"
+              title={crm.member_code ? `Mã hội viên ${crm.member_code}` : undefined}
+              className={cn(
+                'h-[18px] shrink-0 px-1.5 text-[10px] font-bold tracking-wide',
+                hangHoiVien.isMember
+                  ? 'border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-100'
+                  : 'text-muted-foreground',
+              )}
+            >
+              {hangHoiVien.text}
             </Badge>
           )}
           <div className="ml-auto flex shrink-0 items-center">

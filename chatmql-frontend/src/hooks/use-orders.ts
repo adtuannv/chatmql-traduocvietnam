@@ -29,6 +29,15 @@ export interface CrmCustomer {
   order_count?: number | null
   occupation?: string | null
   cap_vip?: string | null
+  // ── Chương trình hội viên (CRM trả sẵn) ──
+  /** Hạng hội viên đọc được, vd "Hội viên", "Hội Viên Bạc". */
+  member_tier?: string | null
+  /** Mã hạng dạng máy, vd "hoi_vien" — dùng để so sánh, không để hiện. */
+  member_tier_raw?: string | null
+  member_code?: string | null
+  member_points?: number | null
+  member_gmv?: number | null
+  is_member?: boolean | null
   nhom_kh?: string | null
   priority_level?: string | null
   gender?: string | null
@@ -316,15 +325,21 @@ export function getAOVClass(aov: number | null | undefined): string {
 }
 
 /**
- * Cấp VIP hiển thị. CRM có sẵn `cap_vip` thì dùng, trừ khi đó là mã nội bộ
- * dạng FT1/KT2/NC3… (không phải cấp VIP) — lúc đó tự tính từ GMV + AOV.
+ * Hạng hội viên để hiện cạnh tiêu đề CRM.
+ *
+ * Dùng `member_tier` của chương trình hội viên chứ không dùng `cap_vip`: cấp VIP
+ * là mã phân loại nội bộ ("VIP 0A") không nói lên quyền lợi gì, còn hạng hội
+ * viên mới quyết định mức giảm 5–10% và cách xưng hô với khách.
+ *
+ * Chưa là hội viên thì nói thẳng — đó là cơ hội mời đăng ký, không phải chỗ
+ * trống nên giấu đi.
  */
-export function formatCombinedVip(crm?: CrmCustomer | null): string {
-  if (!crm) return '—'
-  if (crm.cap_vip && !/^(FT|KT|NC|PL|KD|KL)\d/i.test(crm.cap_vip)) return crm.cap_vip
-  const gmv = Number(crm.gmv_total ?? crm.gmv) || 0
-  const aov = Number(crm.aov) || (crm.order_count ? gmv / crm.order_count : gmv)
-  return `${getVipLevelFromGMV(gmv)}${getAOVClass(aov)}`
+export function formatMemberTier(crm?: CrmCustomer | null): { text: string; isMember: boolean } | null {
+  if (!crm) return null
+  const ten = crm.member_tier?.trim()
+  if (ten) return { text: ten, isMember: crm.is_member !== false }
+  if (crm.is_member === false) return { text: 'Chưa là hội viên', isMember: false }
+  return null
 }
 
 // ── Khoá query ───────────────────────────────────────────────────────
