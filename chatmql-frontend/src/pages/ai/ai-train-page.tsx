@@ -732,6 +732,11 @@ function DemoChat({ botId, botName, botEmoji }: { botId: string; botName: string
         setMsgs((m) => [...m, { role: 'system', text: `↪ Bot chuyển nhân viên: ${res.handoff?.reason || ''}` }])
       } else if (res.reply) {
         setMsgs((m) => [...m, { role: 'bot', text: res.reply! }])
+      } else if (res.error) {
+        // Phân biệt rõ hai chuyện khác hẳn nhau: AI chủ động im, và AI gọi model
+        // thất bại. Gộp chung thì người test đi sửa prompt trong khi lỗi thật là
+        // hết hạn mức token mỗi phút của OpenAI.
+        setMsgs((m) => [...m, { role: 'system', text: `⚠️ Không gọi được model: ${res.error}` }])
       } else {
         setMsgs((m) => [...m, { role: 'system', text: '(Bot quyết định không trả lời lượt này)' }])
       }

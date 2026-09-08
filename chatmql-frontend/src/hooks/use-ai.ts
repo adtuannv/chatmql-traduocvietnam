@@ -298,7 +298,13 @@ export async function createSandboxConversation(name: string) {
 
 export async function simulateBotReply(conversationId: string, customerText: string, botId: string) {
   const { data } = await api.post('/ai/simulate/reply', { conversationId, customerText, botId, includeTrace: false })
-  return data as { reply: string | null; runId?: string; handoff?: { should: boolean; reason?: string } | null }
+  return data as {
+    reply: string | null
+    runId?: string
+    handoff?: { should: boolean; reason?: string } | null
+    /** Lỗi hạ tầng — khác hẳn việc AI chủ động không trả lời. */
+    error?: string | null
+  }
 }
 
 export async function fetchScenario(id: string) {

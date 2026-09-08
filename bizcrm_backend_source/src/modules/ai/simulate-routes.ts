@@ -250,6 +250,11 @@ export async function simulateRoutes(app: FastifyInstance): Promise<void> {
         // Ảnh AI định gửi kèm — hiện ra để quản trị kiểm tra trước khi bật thật.
         images: result.images ?? [],
         handoff: result.handoff ?? null,
+        // Lỗi hạ tầng (hết hạn mức model, model chết…) PHẢI đi ra tới giao diện.
+        // Trước đây trường này bị bỏ, nên khung Demo hiện "Bot quyết định không
+        // trả lời lượt này" cho cả lúc OpenAI trả 429 — người test tưởng prompt
+        // sai trong khi thật ra là hết hạn mức token mỗi phút.
+        error: result.error ?? null,
         routerDecision: result.routerDecision ?? null,
         persisted: effPersist,
         ...(replyMessageId ? { replyMessageId } : {}),
