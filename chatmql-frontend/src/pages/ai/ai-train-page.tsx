@@ -89,6 +89,10 @@ export function AiTrainPage() {
   const { data: budgetData } = useContextBudgets()
   // Backend TDVN không có /ai/channel-overrides — danh sách kênh lấy từ /zalo-accounts.
   const { data: channelAccounts } = useZaloAccounts()
+  // Hook phải nằm TRƯỚC mọi `return` sớm bên dưới. Đặt sau chúng thì lượt render
+  // đầu (đang tải) không gọi tới, lượt sau lại gọi — React đếm số hook lệch nhau
+  // và ném lỗi #310, trắng cả màn.
+  const locKenh = useBoLocKenh(channelAccounts ?? [])
   const { data: scenarioData } = useAiScenarios()
   const { data: prodCats } = useProductCategories()
   const { data: kbCats } = useKnowledgeCategories()
@@ -186,7 +190,6 @@ export function AiTrainPage() {
 
   const providers = config.availableProviders
   const channels = channelAccounts ?? []
-  const locKenh = useBoLocKenh(channels)
   const scenarios = scenarioData?.scenarios ?? []
   const models = providers.find((p) => p.id === form.provider)?.models ?? []
   const set = (patch: AiBotInput) => setForm((f) => ({ ...f, ...patch }))
