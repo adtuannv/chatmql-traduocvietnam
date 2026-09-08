@@ -37,6 +37,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useProductCategories } from '@/hooks/use-products'
 import { useKnowledgeCategories } from '@/hooks/use-knowledge'
 import { useZaloAccounts } from '@/hooks/use-integrations'
+import { CAO_TOI_DA_10_DONG, OTimKenh, TheLocKenh, useBoLocKenh } from '@/components/shared/channel-picker'
 import { CreateKnowledgeDialog } from './ai-knowledge-tab'
 import { useContextBudgets, budgetForDocType, budgetCounterText } from '@/hooks/use-ai-budgets'
 import { useLogicProposals } from '@/hooks/use-ai-improve'
@@ -185,6 +186,7 @@ export function AiTrainPage() {
 
   const providers = config.availableProviders
   const channels = channelAccounts ?? []
+  const locKenh = useBoLocKenh(channels)
   const scenarios = scenarioData?.scenarios ?? []
   const models = providers.find((p) => p.id === form.provider)?.models ?? []
   const set = (patch: AiBotInput) => setForm((f) => ({ ...f, ...patch }))
@@ -355,16 +357,36 @@ export function AiTrainPage() {
               </p>
               {channels.length === 0 ? (
                 <p className="p-2 text-xs text-muted-foreground">Chưa có kênh nào được kết nối.</p>
-              ) : channels.map((ch) => (
-                <label key={ch.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
-                  <input
-                    type="checkbox" checked={selectedChannels.includes(ch.id)}
-                    onChange={() => toggleChannel(ch.id)} disabled={!canEdit}
-                  />
-                  <span className="truncate">{ch.displayName || 'Kênh chưa đặt tên'}</span>
-                  <Badge variant="outline" className="ml-auto shrink-0">{platformName(ch.platform)}</Badge>
-                </label>
-              ))}
+              ) : (
+                <>
+                  <TheLocKenh loc={locKenh} />
+                  <OTimKenh value={locKenh.tuKhoa} onChange={locKenh.datTuKhoa} placeholder="Tìm kênh…" />
+                  <div className={CAO_TOI_DA_10_DONG}>
+                    {locKenh.hienThi.map((ch) => (
+                      <label key={ch.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                        <input
+                          type="checkbox" checked={selectedChannels.includes(ch.id)}
+                          onChange={() => toggleChannel(ch.id)} disabled={!canEdit}
+                        />
+                        <span className="truncate">{ch.displayName || 'Kênh chưa đặt tên'}</span>
+                        <Badge variant="outline" className="ml-auto shrink-0">{platformName(ch.platform)}</Badge>
+                      </label>
+                    ))}
+                  </div>
+                  {locKenh.hienThi.length === 0 && (
+                    <p className="p-2 text-center text-xs text-muted-foreground">
+                      Không có kênh nào khớp{locKenh.tuKhoa ? ` "${locKenh.tuKhoa}"` : ''}
+                    </p>
+                  )}
+                  {/* Kênh đã chọn nhưng bị lọc khuất vẫn phải đếm được, kẻo
+                      tưởng bỏ chọn mất rồi lại tick lại. */}
+                  {selectedChannels.length > 0 && (
+                    <p className="border-t px-2 pt-1.5 text-[11px] text-muted-foreground">
+                      Đang chọn {selectedChannels.length} kênh
+                    </p>
+                  )}
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           <Button onClick={saveConfig} disabled={!canEdit || saving}>

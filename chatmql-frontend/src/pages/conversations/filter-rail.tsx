@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Separator, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/misc'
 import { statusMeta, useZaloAccounts, type ChannelAccount } from '@/hooks/use-integrations'
-import { CHANNEL_GROUPS, groupOfPlatform, type ChannelGroupId } from '@/lib/channel-groups'
+import { CAO_TOI_DA_10_DONG, OTimKenh, TheLocKenh, useBoLocKenh } from '@/components/shared/channel-picker'
 import { FEATURES } from '@/lib/features'
 import { cn, initials } from '@/lib/utils'
 
@@ -73,25 +73,9 @@ export function FilterRail({
   const selected = accountId ? list.find((a) => a.id === accountId) : undefined
   const selectedName = selected?.displayName ?? 'Không tên'
 
-  // Tab loại kênh trong bảng chọn tài khoản. `null` = "Tất cả".
-  const [group, setGroup] = useState<ChannelGroupId | null>(null)
-
-  // Chỉ hiện tab của nhóm thật sự có tài khoản — công ty không dùng sàn TMĐT
-  // thì không phải nhìn một tab rỗng mỗi lần mở bảng.
-  const groupTabs = useMemo(() => {
-    const count = new Map<ChannelGroupId, number>()
-    for (const a of list) {
-      const g = groupOfPlatform(a.platform)
-      count.set(g, (count.get(g) ?? 0) + 1)
-    }
-    return CHANNEL_GROUPS
-      .filter((g) => (count.get(g.id) ?? 0) > 0)
-      .map((g) => ({ ...g, count: count.get(g.id) ?? 0 }))
-  }, [list])
-
-  // Nhóm đang chọn biến mất (tài khoản cuối bị gỡ) thì rơi về "Tất cả".
-  const activeGroup = group && groupTabs.some((g) => g.id === group) ? group : null
-  const visible = activeGroup ? list.filter((a) => groupOfPlatform(a.platform) === activeGroup) : list
+  // Lọc theo nền tảng + tìm theo tên. Chỉ hiện tab của nhóm thật sự có tài
+  // khoản — công ty không dùng sàn TMĐT thì khỏi nhìn một tab rỗng.
+  const loc = useBoLocKenh(list)
 
   const countOf = (value: ConvFilter): number => {
     if (!counts) return 0
@@ -140,22 +124,10 @@ export function FilterRail({
           <DropdownMenuContent align="start" side="right" className="w-72">
             <DropdownMenuLabel>Tài khoản kênh</DropdownMenuLabel>
 
-            {/* Tab theo loại kênh — bấm để lọc, KHÔNG dùng DropdownMenuItem vì
-                Radix đóng cả bảng ngay khi chọn một item. */}
-            {groupTabs.length > 1 && (
-              <div className="flex flex-wrap gap-1 px-2 pb-2">
-                <GroupTab label="Tất cả" count={list.length} active={!activeGroup} onClick={() => setGroup(null)} />
-                {groupTabs.map((g) => (
-                  <GroupTab
-                    key={g.id}
-                    label={g.label}
-                    count={g.count}
-                    active={activeGroup === g.id}
-                    onClick={() => setGroup(g.id)}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Lọc theo nền tảng rồi mới tới ô tìm: chọn nhóm là đã đủ trong
+                phần lớn trường hợp, gõ tìm chỉ cần khi tên na ná nhau. */}
+            <TheLocKenh loc={loc} />
+            <OTimKenh value={loc.tuKhoa} onChange={loc.datTuKhoa} />
 
             <DropdownMenuSeparator />
 
@@ -169,9 +141,10 @@ export function FilterRail({
               <span className="truncate">Tất cả tài khoản</span>
             </DropdownMenuItem>
 
-            {visible.length > 0 && <DropdownMenuSeparator />}
+            {loc.hienThi.length > 0 && <DropdownMenuSeparator />}
 
-            {visible.map((acc) => {
+            <div className={CAO_TOI_DA_10_DONG}>
+            {loc.hienThi.map((acc) => {
               const meta = statusMeta(acc.liveStatus, acc.isDisabled)
               const name = acc.displayName ?? 'Không tên'
               return (
@@ -191,10 +164,15 @@ export function FilterRail({
                 </DropdownMenuItem>
               )
             })}
+            </div>
 
-            {visible.length === 0 && (
+            {loc.hienThi.length === 0 && (
               <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-                {list.length === 0 ? 'Chưa có tài khoản kênh nào' : 'Nhóm này chưa có tài khoản nào'}
+                {list.length === 0
+                  ? 'Chưa có tài khoản kênh nào'
+                  : loc.tuKhoa
+                    ? `Không có tài khoản nào khớp "${loc.tuKhoa}"`
+                    : 'Nhóm này chưa có tài khoản nào'}
               </div>
             )}
           </DropdownMenuContent>
@@ -249,22 +227,3 @@ export function FilterRail({
 }
 
 /** Một tab loại kênh trong bảng chọn tài khoản. */
-function GroupTab({
-  label, count, active, onClick,
-}: { label: string; count: number; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors',
-        active
-          ? 'border-primary bg-primary text-primary-foreground'
-          : 'border-transparent bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-      )}
-    >
-      {label} <span className="tabular-nums opacity-70">{count}</span>
-    </button>
-  )
-}

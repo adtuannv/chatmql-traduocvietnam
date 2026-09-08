@@ -9,6 +9,8 @@
  * thuộc bốn nhóm trên, bỏ đi thì tài khoản biến mất khỏi bảng chọn.
  */
 
+import { BadgeCheck, Facebook, MessageCircle, MoreHorizontal, ShoppingBag, type LucideIcon } from 'lucide-react'
+
 /** Mã nền tảng — khớp `Platform` trong backend. */
 export const PLATFORM = {
   ZALO_OA: 1,
@@ -30,24 +32,28 @@ export interface ChannelGroup {
   label: string
   /** Mã nền tảng thuộc nhóm. Rỗng = nhóm hứng phần còn lại. */
   platforms: number[]
+  /** Icon nhận diện nhanh — danh sách dài thì mắt bắt hình trước chữ. */
+  icon: LucideIcon
 }
 
 /** Thứ tự hiển thị bám theo tần suất dùng: Zalo cá nhân là kênh chính của TDVN. */
 export const CHANNEL_GROUPS: ChannelGroup[] = [
-  { id: 'zalo_user', label: 'Zalo cá nhân', platforms: [PLATFORM.ZALO_USER] },
-  { id: 'zalo_oa', label: 'OA', platforms: [PLATFORM.ZALO_OA] },
+  { id: 'zalo_user', label: 'Zalo cá nhân', platforms: [PLATFORM.ZALO_USER], icon: MessageCircle },
+  { id: 'zalo_oa', label: 'OA', platforms: [PLATFORM.ZALO_OA], icon: BadgeCheck },
   {
     id: 'facebook',
     label: 'Facebook',
     // Instagram và Pancake FB/IG đều là kênh Meta — nhân viên coi chung một mối.
     platforms: [PLATFORM.FACEBOOK_PAGE, PLATFORM.INSTAGRAM, PLATFORM.PANCAKE_FB, PLATFORM.PANCAKE_IG],
+    icon: Facebook,
   },
   {
     id: 'ecommerce',
     label: 'Sàn TMĐT',
     platforms: [PLATFORM.PANCAKE_TIKTOK, PLATFORM.PANCAKE_OTHER],
+    icon: ShoppingBag,
   },
-  { id: 'other', label: 'Khác', platforms: [] },
+  { id: 'other', label: 'Khác', platforms: [], icon: MoreHorizontal },
 ]
 
 /** Nhóm của một tài khoản. Không khớp nhóm nào thì về "Khác". */
