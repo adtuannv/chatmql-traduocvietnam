@@ -89,8 +89,12 @@ export const router = createBrowserRouter([
 
       { path: 'crm-products', element: <ProtectedRoute permission={'products.view'}><CrmProductsPage /></ProtectedRoute> },
 
-      { path: 'sales-docs', element: <ProtectedRoute permission={'products.view'}><SalesDocsPage /></ProtectedRoute> },
-      { path: 'sales-docs/library', element: <ProtectedRoute permission={'products.view'}><DocLibraryPage /></ProtectedRoute> },
+      // Thư viện dạng cây thư mục LÀ màn chính. Màn tổng quan cũ bỏ đi: nó chỉ
+      // là một trang trung gian có nút bấm sang thư viện, thêm một cú bấm mà
+      // không thêm thông tin gì.
+      { path: 'sales-docs', element: <ProtectedRoute permission={'products.view'}><DocLibraryPage /></ProtectedRoute> },
+      // Giữ đường cũ cho ai đã lưu dấu trang hoặc dán link trong nhóm chat.
+      { path: 'sales-docs/library', element: <Navigate to="/sales-docs" replace /> },
       { path: 'sales-docs/c/:catId', element: <ProtectedRoute permission={'products.view'}><SalesDocsPage /></ProtectedRoute> },
       { path: 'sales-docs/p/:productId', element: <ProtectedRoute permission={'products.view'}><SalesDocsPage /></ProtectedRoute> },
 

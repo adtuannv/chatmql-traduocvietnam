@@ -9,13 +9,12 @@
  * theo cờ này chứ không chỉ nhắc trong prompt AI.
  */
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   ArrowLeft, ChevronDown, ChevronUp, FileText, Film, Folder, FolderPlus, Image as ImageIcon, Link2,
   Package, Pencil, Plus, Search, Trash2, Type,
 } from 'lucide-react'
-import { PageHeader } from '@/components/shared/page-header'
 import { ErrorState, Loading } from '@/components/shared/feedback'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -102,33 +101,43 @@ export function DocLibraryPage() {
   const openEditFolder = (f: DocFolder) => {
     setEditingFolder(f); setNewFolderParent(null); setFolderOpen(true)
   }
+  const navigate = useNavigate()
+
 
   return (
-    <div className="space-y-5">
-      {/* Lối quay lại — thư viện là màn con của Tài liệu bán hàng, không phải mục menu riêng. */}
-      <Link
-        to="/sales-docs"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
-      >
-        <ArrowLeft className="h-4 w-4" /> Về tổng quan Tài liệu bán hàng
-      </Link>
-
-      <PageHeader
-        title="Thư viện tài liệu"
-        description="Kho tài nguyên bán hàng: ảnh, video, PDF, tài liệu, văn bản. Nhân viên tra cứu để gửi khách, AI đọc phần chữ khi tư vấn."
-        actions={canEdit ? (
-          <div className="flex gap-2">
-            <Button variant="outline" className="gap-1.5" onClick={() => openNewFolder(null)}>
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Tiêu đề, lối quay lại và nút thao tác trên CÙNG một hàng. Trước đây ba
+          thứ này xếp thành ba tầng, ăn gần một phần ba chiều cao màn hình trước
+          khi thấy được tài liệu nào. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b pb-3">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          aria-label="Quay lại"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="truncate text-lg font-semibold leading-tight">Thư viện tài liệu</h1>
+          <p className="truncate text-xs text-muted-foreground">
+            Ảnh, video, PDF, văn bản — nhân viên gửi khách, AI đọc khi tư vấn.
+          </p>
+        </div>
+        {canEdit && (
+          <div className="ml-auto flex shrink-0 gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => openNewFolder(null)}>
               <FolderPlus className="h-4 w-4" /> Thư mục mới
             </Button>
-            <Button className="gap-1.5" onClick={openNew}><Plus className="h-4 w-4" /> Thêm tài nguyên</Button>
+            <Button size="sm" className="gap-1.5" onClick={openNew}><Plus className="h-4 w-4" /> Thêm tài nguyên</Button>
           </div>
-        ) : undefined}
-      />
+        )}
+      </div>
 
-      <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
-        {/* Cây thư mục */}
-        <aside className="space-y-1">
+      <div className="grid min-h-0 flex-1 gap-5 pt-4 lg:grid-cols-[230px_1fr]">
+        {/* Cây thư mục: cố định chỗ, dài quá thì tự cuộn trong cột — không đẩy
+            cả trang dài ra rồi phải cuộn xuống mới thấy danh sách tài liệu. */}
+        <aside className="space-y-1 lg:sticky lg:top-0 lg:max-h-[calc(100vh-11rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
           <FolderRow label="Tất cả tài nguyên" count={totalAssets} active={folderId === ALL} onClick={() => setFolderId(ALL)} />
           <FolderRow label="Chưa xếp thư mục" active={folderId === UNFILED} onClick={() => setFolderId(UNFILED)} />
           {foldersQ.isLoading ? (
@@ -158,7 +167,9 @@ export function DocLibraryPage() {
 
         {/* Danh sách tài nguyên */}
         <section className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Ghim lại: cuộn danh sách dài mà mất ô tìm thì phải cuộn ngược lên
+              đầu chỉ để gõ một từ. */}
+          <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-2 bg-background px-1 pb-2 pt-0.5">
             <div className="relative min-w-[200px] flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm theo tiêu đề, mô tả, nội dung…" className="pl-9" />

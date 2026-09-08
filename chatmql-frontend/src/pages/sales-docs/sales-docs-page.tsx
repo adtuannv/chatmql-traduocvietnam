@@ -159,11 +159,6 @@ function RootView() {
       <PageHeader
         title="Tài liệu bán hàng"
         description="Tài nguyên bán hàng do đội ngũ tự dựng: bảng giá, ảnh, video, tài liệu. Sản phẩm chỉ hiện khi tài nguyên được ghép nối."
-        actions={
-          <Button variant="outline" className="gap-1.5" asChild>
-            <Link to={`${ROOT}/library`}><FolderOpen className="h-4 w-4" /> Quản lý thư viện</Link>
-          </Button>
-        }
       />
       <Crumbs items={[{ label: 'Tài liệu bán hàng' }]} />
 
@@ -175,7 +170,7 @@ function RootView() {
         <div className="rounded-lg border border-dashed py-16 text-center">
           <p className="text-sm font-medium">Chưa có tài liệu nào</p>
           <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-            Vào <Link to={`${ROOT}/library`} className="text-primary hover:underline">Quản lý thư viện</Link> để tạo thư mục
+            Vào <Link to={ROOT} className="text-primary hover:underline">Thư viện tài liệu</Link> để tạo thư mục
             (ví dụ: Bảng giá, Trà, Bánh) và nạp tài nguyên. Thứ tự hiển thị ở đây theo đúng thứ tự bạn sắp xếp.
           </p>
         </div>
